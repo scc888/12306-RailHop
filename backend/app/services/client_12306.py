@@ -14,6 +14,9 @@ from .station_service import station_service
 urllib3.disable_warnings()
 logger = logging.getLogger(__name__)
 
+class RailwayQueryError(RuntimeError):
+    """An upstream failure, distinct from a successful empty ticket query."""
+
 class Ticket12306Client:
     def __init__(self):
         self.session = requests.Session()
@@ -31,18 +34,22 @@ class Ticket12306Client:
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
         })
 
-    def ensure_init(self, force: bool = False) -> None:
+    def ensure_init(self, force: bool = False, timeout_seconds: float = None, strict: bool = False) -> None:
         """访问初始化页面获取会话基础 Cookie (若已存在有效 Cookie 则复用)"""
         if self._initialized and not force and "JSESSIONID" in self.session.cookies:
             return
         try:
-            self.session.get(
+            response = self.session.get(
                 settings.INIT_URL,
-                verify=False,
-                timeout=settings.REQUEST_TIMEOUT
+                verify=True if strict else False,
+                timeout=timeout_seconds or settings.REQUEST_TIMEOUT
             )
+            if strict and response.status_code != 200:
+                raise RailwayQueryError('铁路查询会话初始化失败')
             self._initialized = True
         except Exception as e:
+            if strict:
+                raise RailwayQueryError('铁路查询会话初始化失败，请稍后重试') from e
             logger.warning(f"Session init failed: {e}")
 
     def resolve_c_url(self, train_date: str, from_code: str, to_code: str) -> str:
@@ -79,10 +86,23 @@ class Ticket12306Client:
         to_code: str,
         purpose_codes: str = "ADULT"
     ) -> List[TrainTicketInfo]:
-        """
-        查询两站之间的所有列车及余票
-        """
-        self.ensure_init()
+        """Legacy callers keep their successful-empty / failure-empty contract."""
+        try:
+            return self.query_tickets_strict(train_date, from_code, to_code, purpose_codes)
+        except RailwayQueryError:
+            logger.warning('铁路余票查询未成功')
+            return []
+
+    def query_tickets_strict(self, train_date: str, from_code: str, to_code: str,
+                             purpose_codes: str = 'ADULT', timeout_seconds: float = None) -> List[TrainTicketInfo]:
+        deadline = time.monotonic() + (timeout_seconds or settings.REQUEST_TIMEOUT)
+
+        def remaining():
+            value = deadline - time.monotonic()
+            if value <= 0:
+                raise RailwayQueryError('铁路余票查询超时，请稍后重试')
+            return value
+
         params = {
             "leftTicketDTO.train_date": train_date,
             "leftTicketDTO.from_station": from_code,
@@ -90,47 +110,55 @@ class Ticket12306Client:
             "purpose_codes": purpose_codes
         }
 
-        # 优先使用已探测的 c_url
-        target_url = f"{settings.BASE_12306_URL}/{self._cached_c_url}"
         try:
+            self.ensure_init(timeout_seconds=remaining(), strict=True)
+            target_url = f"{settings.BASE_12306_URL}/{self._cached_c_url}"
             res = self.session.get(
                 target_url,
                 params=params,
-                verify=False,
+                verify=True,
                 allow_redirects=False,
-                timeout=settings.REQUEST_TIMEOUT
+                timeout=remaining()
             )
             # 若返回 302，重新初始化 Cookie 并重新探测 c_url
             if res.status_code == 302:
-                self.ensure_init()
-                new_c_url = self.resolve_c_url(train_date, from_code, to_code)
+                self.ensure_init(force=True, timeout_seconds=remaining(), strict=True)
+                probe = self.session.get(settings.QUERY_PROBE_URL, params=params, verify=True,
+                                         allow_redirects=False, timeout=remaining())
+                new_c_url = probe.json().get('c_url', '')
+                if not re.fullmatch(r'leftTicket/query[A-Za-z]*', new_c_url):
+                    raise RailwayQueryError('铁路查询路径暂不可用，请稍后重试')
+                self._cached_c_url = new_c_url
                 target_url = f"{settings.BASE_12306_URL}/{new_c_url}"
                 res = self.session.get(
                     target_url,
                     params=params,
-                    verify=False,
+                    verify=True,
                     allow_redirects=False,
-                    timeout=settings.REQUEST_TIMEOUT
+                    timeout=remaining()
                 )
 
             if res.status_code != 200:
-                logger.error(f"Query returned status {res.status_code}: {res.text[:100]}")
-                return []
+                raise RailwayQueryError(f'铁路余票查询返回 HTTP {res.status_code}，请稍后重试')
 
             res_json = res.json()
-            if not res_json.get("status", False):
-                logger.warning(f"12306 API returned false: {res_json.get('messages')}")
-                return []
+            if not isinstance(res_json, dict) or res_json.get('status') is not True:
+                raise RailwayQueryError('铁路余票查询暂不可用，请稍后重试')
 
             data = res_json.get("data", {})
-            raw_results = data.get("result", [])
+            if not isinstance(data, dict) or not isinstance(data.get('result'), list):
+                raise RailwayQueryError('铁路余票查询响应格式异常，请稍后重试')
+            raw_results = data['result']
+            if any(not isinstance(item, str) or len(item.split('|')) < 35 for item in raw_results):
+                raise RailwayQueryError('铁路余票数据不完整，请稍后重试')
             station_map = data.get("map", {})
 
             return self._parse_ticket_results(raw_results, station_map)
 
+        except RailwayQueryError:
+            raise
         except Exception as e:
-            logger.error(f"Error querying tickets: {e}")
-            return []
+            raise RailwayQueryError('铁路余票查询失败，请稍后重试') from e
 
     def _parse_ticket_results(
         self,
@@ -200,6 +228,7 @@ class Ticket12306Client:
             prices = self._parse_price_string(price_encoded)
 
             train_info = TrainTicketInfo(
+                run_date=parts[13] or None,
                 train_no=train_no,
                 train_code=train_code,
                 start_station_name=start_name,

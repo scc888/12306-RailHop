@@ -34,6 +34,7 @@ class TrainSeatInfo(BaseModel):
 
 
 class TrainTicketInfo(BaseModel):
+    run_date: Optional[str] = Field(None, exclude=True, description="内部校验列车运行日，不改变原查询响应")
     train_no: str = Field(..., description="车次内部唯一标识, 如 5500000G2800")
     train_code: str = Field(..., description="旅客车次, 如 G28")
     start_station_name: str = Field(..., description="始发站")
