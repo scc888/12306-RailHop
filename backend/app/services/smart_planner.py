@@ -2,6 +2,7 @@
 智能出行算法引擎: 实现【自定义席别偏好】与【多阶同车换座 (最多换座1~3次)】、【买短补长】、【买长乘短】
 """
 import logging
+from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Tuple
 from ..models.schemas import SmartPlan, PlanSegment, TrainStopInfo
 from .client_12306 import client_12306
@@ -55,6 +56,8 @@ class SmartRoutePlanner:
             logger.warning(f"Could not align station indices: from_idx={from_idx}, to_idx={to_idx}")
             return plans
 
+        departure_dates = self._departure_dates(stops, from_idx, train_date)
+
         journey_stops = stops[from_idx : to_idx + 1]
         n_stops = len(journey_stops)
         if n_stops < 2:
@@ -72,10 +75,13 @@ class SmartRoutePlanner:
 
             st_from_name = journey_stops[i].station_name
             st_to_name = journey_stops[j].station_name
-            c_from = station_service.get_code(st_from_name) or from_code
-            c_to = station_service.get_code(st_to_name) or to_code
+            c_from = station_service.get_code(st_from_name)
+            c_to = station_service.get_code(st_to_name)
+            if not c_from or not c_to:
+                segment_cache[(i, j)] = None
+                return None
 
-            tickets = client_12306.query_tickets(train_date, c_from, c_to)
+            tickets = client_12306.query_tickets(departure_dates[st_from_name], c_from, c_to)
             matched = next((t for t in tickets if t.train_code == train_code), None)
             if not matched:
                 segment_cache[(i, j)] = None
@@ -185,14 +191,14 @@ class SmartRoutePlanner:
             is_furthest = (i == N - 1)
             score = 83 if is_furthest else (80 if is_closest else 76)
             sub_title = (
-                f"买到最近站【{inter_name}】先上车，车上补票至【{to_name}】(起步成本最低)"
+                f"先买至【{inter_name}】，候补后段至【{to_name}】"
                 if is_closest else
-                f"买到【{inter_name}】享受有座乘车，车上补剩余路程"
+                f"先买至【{inter_name}】，剩余区间提交候补"
             )
 
             p = SmartPlan(
                 plan_type=1,
-                plan_type_name="买短补长 (买1张票)",
+                plan_type_name="买短补长（后段候补）",
                 ticket_count=1,
                 transfer_count=0,
                 train_code=train_code,
@@ -202,8 +208,8 @@ class SmartRoutePlanner:
                 risk_level=2,
                 risk_notice=(
                     f"温馨提醒：购买【{from_name} -> {inter_name}】正规车票正常进站乘车。"
-                    f"上车后请第一时间前往列车长办公席申请办理越站补票手续。"
-                    f"特别注意：春运/国庆等极端客流若列车严重超员报警，铁路部门有权暂停办理补票。"
+                    f"前段付款后提交【{inter_name} -> {to_name}】官方候补，候补还需支付预付款。"
+                    f"候补兑现前没有后段车票，不能据此保证全程出行；未兑现时应在已购票到站下车。"
                 ),
                 segments=[
                     self._build_segment(journey_stops[0], journey_stops[i], seg1, "官方正规车票，合法进站上车"),
@@ -212,11 +218,11 @@ class SmartRoutePlanner:
                         to_station=to_name,
                         start_time=journey_stops[i].start_time,
                         arrive_time=journey_stops[N].arrive_time,
-                        seat_name="车上补票",
-                        seat_status="车上补票 (通常为无座)",
-                        seat_price="视补票核收",
+                        seat_name=seg1[0],
+                        seat_status="待提交官方候补",
+                        seat_price="以官方候补预付款为准",
                         is_extension=True,
-                        tip="列车运行途中主动找列车员补票"
+                        tip="后段候补兑现后才有对应车票"
                     )
                 ]
             )
@@ -287,7 +293,40 @@ class SmartRoutePlanner:
 
         # 7. 排序：换座 1 次 (95) > 换座 2 次 (90) > 买长乘短 (88) > 换座 3 次 (85) > 买短补长 (80)
         plans.sort(key=lambda p: p.recommendation_score, reverse=True)
+        self._set_booking_fields(plans, stops, from_idx, train_date)
         return plans
+
+    def _set_booking_fields(self, plans, stops, from_idx, train_date):
+        """补全购票区间和上车日期；优先用官方到达天数，否则按时刻越过午夜计算。"""
+        departure_dates = self._departure_dates(stops, from_idx, train_date)
+        seat_codes = {"二等座": "ze", "一等座": "zy", "商务座": "swz", "硬卧": "yw", "软卧": "rw", "动卧": "srrb", "硬座": "yz", "无座": "wz"}
+        for plan in plans:
+            for segment in plan.segments:
+                segment.from_station_telecode = station_service.get_code(segment.from_station) or ""
+                segment.to_station_telecode = station_service.get_code(segment.to_station) or ""
+                segment.train_date = departure_dates[segment.from_station]
+                segment.seat_code = seat_codes.get(segment.seat_name, "")
+                if segment.is_extension:
+                    segment.seat_code = plan.segments[0].seat_code
+                    segment.tip = "此区间提交官方候补，支付候补预付款后生效；兑现前没有该区间车票"
+
+    def _departure_dates(self, stops, from_idx, train_date):
+        """按各站发车时刻计算上车日期，供余票查询和实际下单共同使用。"""
+        day, previous = 0, None
+        departures = {}
+        for stop in stops:
+            for position, clock in enumerate([stop.arrive_time, stop.start_time]):
+                if not clock or len(clock) != 5 or clock[2] != ":" or not clock.replace(":", "").isdigit():
+                    continue
+                if position == 0 and stop.arrive_day_diff is not None:
+                    day = stop.arrive_day_diff
+                elif previous is not None and clock < previous:
+                    day += 1
+                previous = clock
+            departures[stop.station_name] = day
+        origin_day = departures[stops[from_idx].station_name]
+        base = datetime.strptime(train_date, "%Y-%m-%d")
+        return {name: (base + timedelta(days=value - origin_day)).strftime("%Y-%m-%d") for name, value in departures.items()}
 
     def _build_segment(
         self,
@@ -333,7 +372,7 @@ class SmartRoutePlanner:
         for code, name, val in priority:
             if allowed_set and code not in allowed_set:
                 continue
-            if val not in ("--", "无", ""):
+            if val == "有" or (str(val).isdigit() and int(val) > 0):
                 return (name, val, code)
         return (None, None, None)
 

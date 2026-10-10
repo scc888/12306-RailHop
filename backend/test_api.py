@@ -1,5 +1,5 @@
 """
-FastAPI HTTP 端点端到端自动化测试
+FastAPI HTTP 端点端到端自动化测试 (涵盖 V1 查票与 V2 认证/订单体系)
 """
 import sys
 import os
@@ -49,15 +49,15 @@ class TestFastApiEndpoints(unittest.TestCase):
         self.assertGreater(len(data), 0)
         first_train = data[0]
         self.assertIn("prices", first_train)
-        print(f"查询上海->北京成功返回 {len(data)} 趟列车，首趟: {first_train['train_code']}，票价: {first_train['prices']}")
+        self.assertIn("secret_str", first_train)
+        print(f"查询上海->北京成功返回 {len(data)} 趟列车，首趟: {first_train['train_code']}，密钥串长度: {len(first_train['secret_str'])}")
 
     def test_04_smart_plans_api(self):
         print("\n--- [测试 API: 智能推算方案] ---")
-        # 查上海到北京
         query_res = self.client.get("/api/tickets/query?train_date=2026-10-10&from_station=上海&to_station=北京")
         trains = query_res.json()["data"]
         target = trains[0]
-        
+
         plan_url = (
             f"/api/smart-plans/calculate?"
             f"train_date=2026-10-10&"
@@ -73,6 +73,43 @@ class TestFastApiEndpoints(unittest.TestCase):
         print(f"车次 {target['train_code']} 成功计算出 {len(plans)} 个智能方案！")
         if plans:
             print(f"Top 1 方案标题: {plans[0]['title']}")
+
+    def test_05_v2_auth_and_session(self):
+        print("\n--- [测试 API V2: 会话初始化与登录二维码] ---")
+        init_res = self.client.get("/api/auth/session/init")
+        self.assertEqual(init_res.status_code, 200)
+        sid = init_res.json()["data"]["session_id"]
+        self.assertTrue(len(sid) > 0)
+        print(f"已成功分配独立 Session ID: {sid}")
+
+        status_res = self.client.get("/api/auth/status", headers={"X-Session-Id": sid})
+        self.assertEqual(status_res.status_code, 200)
+        self.assertFalse(status_res.json()["data"]["logged_in"])
+        print("未登录状态验证正常")
+
+        qr_res = self.client.get("/api/auth/qr", headers={"X-Session-Id": sid})
+        self.assertEqual(qr_res.status_code, 200)
+        qr_data = qr_res.json()["data"]
+        self.assertTrue(qr_data["image"].startswith("data:image/png;base64,"))
+        self.assertTrue(len(qr_data["uuid"]) > 0)
+        print(f"成功向 12306 申请二维码，UUID 前缀: {qr_data['uuid'][:12]}...")
+
+        check_res = self.client.get("/api/auth/qr/status", headers={"X-Session-Id": sid})
+        self.assertEqual(check_res.status_code, 200)
+        print(f"二维码实时状态: {check_res.json()['data']['status']}")
+
+    def test_06_v2_order_routes(self):
+        print("\n--- [测试 API V2: 乘车人与未完成订单接口] ---")
+        sid = "test_unit_session"
+        p_res = self.client.get("/api/passengers", headers={"X-Session-Id": sid})
+        self.assertEqual(p_res.status_code, 200)
+        self.assertIsInstance(p_res.json()["data"], list)
+        print("乘车人查询接口 (未登录返回空列表) 正常")
+
+        unpaid_res = self.client.get("/api/orders/unpaid", headers={"X-Session-Id": sid})
+        self.assertEqual(unpaid_res.status_code, 200)
+        self.assertIsNone(unpaid_res.json()["data"])
+        print("未完成订单查询接口 (无订单返回 null) 正常")
 
 if __name__ == "__main__":
     unittest.main()

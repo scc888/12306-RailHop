@@ -49,7 +49,7 @@ class StationService:
                 res = requests.get(
                     settings.STATION_NAME_URL,
                     headers=headers,
-                    verify=False,
+                    verify=True,
                     timeout=settings.REQUEST_TIMEOUT
                 )
                 if res.status_code == 200:

@@ -9,11 +9,13 @@ from .config import settings
 from .api.routes import router
 from .services.station_service import station_service
 from .services.client_12306 import client_12306
+from .services.auth_diagnostics import configure_auth_logging
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
+configure_auth_logging()
 logger = logging.getLogger("12306_tool")
 
 @asynccontextmanager

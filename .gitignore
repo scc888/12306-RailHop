@@ -24,6 +24,7 @@ wheels/
 .installed.cfg
 *.egg
 .pytest_cache/
+backend/logs/
 
 # Node / Frontend
 node_modules/

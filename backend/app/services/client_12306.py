@@ -15,8 +15,8 @@ urllib3.disable_warnings()
 logger = logging.getLogger(__name__)
 
 class Ticket12306Client:
-    def __init__(self):
-        self.session = requests.Session()
+    def __init__(self, session=None):
+        self.session = session if session is not None else requests.Session()
         self._setup_session()
         self._cached_c_url: str = "leftTicket/queryG"
         self._stops_cache: Dict[str, Tuple[float, List[TrainStopInfo]]] = {}
@@ -38,7 +38,7 @@ class Ticket12306Client:
         try:
             self.session.get(
                 settings.INIT_URL,
-                verify=False,
+                verify=True,
                 timeout=settings.REQUEST_TIMEOUT
             )
             self._initialized = True
@@ -57,7 +57,7 @@ class Ticket12306Client:
             res = self.session.get(
                 settings.QUERY_PROBE_URL,
                 params=params,
-                verify=False,
+                verify=True,
                 allow_redirects=False,
                 timeout=settings.REQUEST_TIMEOUT
             )
@@ -96,7 +96,7 @@ class Ticket12306Client:
             res = self.session.get(
                 target_url,
                 params=params,
-                verify=False,
+                verify=True,
                 allow_redirects=False,
                 timeout=settings.REQUEST_TIMEOUT
             )
@@ -108,7 +108,7 @@ class Ticket12306Client:
                 res = self.session.get(
                     target_url,
                     params=params,
-                    verify=False,
+                    verify=True,
                     allow_redirects=False,
                     timeout=settings.REQUEST_TIMEOUT
                 )
@@ -126,7 +126,10 @@ class Ticket12306Client:
             raw_results = data.get("result", [])
             station_map = data.get("map", {})
 
-            return self._parse_ticket_results(raw_results, station_map)
+            tickets = self._parse_ticket_results(raw_results, station_map)
+            for ticket in tickets:
+                ticket.train_date = train_date
+            return tickets
 
         except Exception as e:
             logger.error(f"Error querying tickets: {e}")
@@ -177,7 +180,7 @@ class Ticket12306Client:
             wz = clean_seat(parts[26])
 
             def has_ticket(val: str) -> bool:
-                return val not in ("--", "无", "")
+                return val == "有" or (val.isdigit() and int(val) > 0)
 
             has_any = any(has_ticket(s) for s in [swz, zy, ze, gr, rw, srrb, yw, rz, yz, wz])
 
@@ -199,6 +202,9 @@ class Ticket12306Client:
             price_encoded = parts[39] if len(parts) > 39 else ""
             prices = self._parse_price_string(price_encoded)
 
+            # 候补接口需要官方原始编码；普通购票在构造表单时才解码一次。
+            secret_str = parts[0] if parts[0] else ""
+
             train_info = TrainTicketInfo(
                 train_no=train_no,
                 train_code=train_code,
@@ -212,6 +218,9 @@ class Ticket12306Client:
                 arrive_time=arrive_time,
                 duration=duration,
                 can_buy=can_buy,
+                secret_str=secret_str,
+                waitlist_available=len(parts) > 37 and parts[37] == "1",
+                waitlist_seat_limits=parts[38] if len(parts) > 38 else "",
                 seats=seat_info,
                 prices=prices
             )
@@ -276,7 +285,7 @@ class Ticket12306Client:
             res = self.session.get(
                 f"{settings.BASE_12306_URL}/leftTicket/queryTicketPrice",
                 params=params,
-                verify=False,
+                verify=True,
                 timeout=settings.REQUEST_TIMEOUT
             )
             if res.status_code == 200:
@@ -324,7 +333,7 @@ class Ticket12306Client:
             res = self.session.get(
                 settings.STOPS_QUERY_URL,
                 params=params,
-                verify=False,
+                verify=True,
                 timeout=settings.REQUEST_TIMEOUT
             )
             if res.status_code == 200:
@@ -336,7 +345,8 @@ class Ticket12306Client:
                         station_name=item.get("station_name", ""),
                         arrive_time=item.get("arrive_time", "--"),
                         start_time=item.get("start_time", "--"),
-                        stopover_time=item.get("stopover_time", "--")
+                        stopover_time=item.get("stopover_time", "--"),
+                        arrive_day_diff=int(item["arrive_day_diff"]) if str(item.get("arrive_day_diff", "")).isdigit() else None
                     ))
                 if stops:
                     self._stops_cache[cache_key] = (now, stops)
