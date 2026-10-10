@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .api.routes import router
+from .api.transfer_routes import router as transfer_router
 from .services.station_service import station_service
 from .services.client_12306 import client_12306
 
@@ -45,6 +46,7 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(transfer_router)
 
 @app.get("/")
 def index():
