@@ -49,6 +49,12 @@
     </header>
 
     <main class="max-w-6xl mx-auto px-4 pt-6 space-y-6">
+      <nav aria-label="查询方式" class="inline-flex rounded-xl border border-slate-200 bg-white p-1 gap-1">
+        <button type="button" @click="queryMode = 'direct'" :aria-pressed="queryMode === 'direct'" class="rounded-lg px-5 py-2 text-sm font-semibold cursor-pointer" :class="queryMode === 'direct' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'">直达查询</button>
+        <button type="button" @click="queryMode = 'transfer'" :aria-pressed="queryMode === 'transfer'" class="rounded-lg px-5 py-2 text-sm font-semibold cursor-pointer" :class="queryMode === 'transfer' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'">中转查询</button>
+      </nav>
+      <TransferSearch v-if="queryMode === 'transfer'" :initial-from="fromStation" :initial-to="toStation" :initial-date="trainDate" :initial-seats="selectedSeatCodes" />
+      <div v-show="queryMode === 'direct'" class="space-y-6">
       <!-- 查询输入卡片 -->
       <section class="bg-white rounded-2xl p-5 shadow-xs border border-slate-200/80">
         <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
@@ -255,6 +261,10 @@
       </section>
 
       <!-- 查询结果展示区 -->
+      <div v-if="queried && !hasPreferredDirectTicket" class="flex flex-wrap justify-between items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-4 text-sm text-indigo-900">
+        <span>当前所选席别未找到直达有票车次，可以看看同站中转路线。</span>
+        <button type="button" @click="queryMode = 'transfer'" class="font-semibold text-blue-700 hover:underline cursor-pointer">查询有票中转方案 →</button>
+      </div>
       <section v-if="queried" class="space-y-4">
         <!-- 统计状态条 -->
         <div class="flex flex-wrap items-center justify-between bg-white px-4 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-600">
@@ -520,6 +530,7 @@
           </div>
         </div>
       </section>
+      </div>
     </main>
 
     <!-- 底部简要免责声明 -->
@@ -532,6 +543,9 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import TransferSearch from './components/TransferSearch.vue'
+
+const queryMode = ref('direct')
 import {
   Train,
   Search,
@@ -771,6 +785,11 @@ const filteredTrains = computed(() => {
 const countDirectAvailable = computed(() => {
   return filteredTrains.value.filter(t => t.seats.has_any_ticket).length
 })
+
+const hasPreferredDirectTicket = computed(() => trainResults.value.some(train => train.can_buy && selectedSeatCodes.value.some(code => {
+  const value = train.seats[code]
+  return value === '有' || (typeof value === 'string' && /^\d+$/.test(value) && Number(value) > 0)
+})))
 
 // 席别自适应展示 (包含高铁与普速列车的硬座/卧铺及具体票价)
 function getDisplaySeats(train) {
