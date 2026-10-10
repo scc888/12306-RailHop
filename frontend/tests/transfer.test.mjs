@@ -57,3 +57,29 @@ test('请求超过时限时退出加载并给出超时原因',async()=>{
   const controller=createTransferQueryController(()=>new Promise(()=>{}),5)
   await assert.rejects(controller.search({}),/查询超时/)
 })
+
+test('车站解析尚未完成时取消不会触发中转POST',async()=>{
+  let finishLookup
+  let postCount=0
+  const controller=createTransferQueryController(async()=>{
+    postCount++
+    return {ok:true,json:async()=>({code:200,data:{plans:[],meta:{}}})}
+  })
+  const lookup=new Promise(resolve=>{finishLookup=resolve})
+  const result=controller.search({},async(request,signal)=>{
+    await lookup
+    return {...request,from_station:'SHH',to_station:'BJP'}
+  })
+  controller.cancel()
+  finishLookup()
+  assert.equal(await result,null)
+  assert.equal(postCount,0)
+})
+
+test('车站解析和响应体读取均受查询总时限约束',async()=>{
+  const response=async()=>({ok:true,json:async()=>({code:200,data:{plans:[],meta:{}}})})
+  const beforePost=createTransferQueryController(response,5)
+  await assert.rejects(beforePost.search({},()=>new Promise(()=>{})),/查询超时/)
+  const body=createTransferQueryController(async()=>({ok:true,json:()=>new Promise(()=>{})}),5)
+  await assert.rejects(body.search({}),/查询超时/)
+})

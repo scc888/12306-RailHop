@@ -52,6 +52,7 @@
       </form>
     </section>
 
+    <div v-if="queryNotice" role="status" class="rounded-xl border border-blue-200 bg-blue-50 text-blue-800 p-4 text-sm">{{ queryNotice }}</div>
     <div v-if="error" role="alert" class="rounded-xl border border-rose-200 bg-rose-50 text-rose-800 p-4 text-sm">{{ error }}</div>
     <div v-if="loading" role="status" class="rounded-2xl bg-white border border-slate-200 p-8 text-center"><div class="mx-auto mb-3 h-6 w-6 rounded-full border-2 border-blue-100 border-t-blue-600 animate-spin"></div><p class="font-semibold text-slate-700">正在查询各段余票并核对换乘时间</p><p class="text-xs text-slate-500 mt-2">多次中转需要查询更多区间，通常需要数十秒。</p><button type="button" @click="invalidate" class="text-sm text-blue-700 mt-4 cursor-pointer">取消本次查询</button></div>
     <section v-if="result && !loading" class="space-y-4" aria-live="polite">
@@ -85,6 +86,7 @@ const toSuggestions = ref([])
 const loading = ref(false)
 const result = ref(null)
 const error = ref('')
+const queryNotice = ref('')
 const stationError = ref('')
 const controller = createTransferQueryController()
 let requestId = 0
@@ -93,10 +95,15 @@ const reasons = {candidate_limit:'候选站范围受限',query_limit:'达到区�
 const sortedPlans = computed(() => sortPlans(result.value?.plans || [],sortBy.value))
 const truncationText = computed(() => (result.value?.meta.truncation_reasons || []).map(r=>reasons[r] || r).join('；'))
 const candidateNames = computed(() => (result.value?.meta.candidate_station_codes || []).map(c=>stations.value.find(s=>s.station_code===c)?.station_name || c).join('、'))
-function invalidate() { requestId++; controller.cancel(); loading.value=false; result.value=null; error.value='' }
+function invalidate() { requestId++; controller.cancel(); loading.value=false; result.value=null; error.value=''; queryNotice.value='' }
 watch([fromText,toText,trainDate,transferCount,minMinutes,viaTexts,allowedSeats],invalidate,{deep:true,flush:'sync'})
+watch(sortBy,()=>{
+  const needsQuery = !!result.value || loading.value
+  invalidate()
+  if(needsQuery) queryNotice.value='排序条件已变更，请重新查询以获取该排序下的前列方案。'
+},{flush:'sync'})
 watch(() => [props.initialFrom,props.initialTo,props.initialDate],([from,to,day])=>{fromText.value=from || '';toText.value=to || '';trainDate.value=day || today})
-onUnmounted(() => controller.cancel())
+onUnmounted(invalidate)
 onMounted(async()=>{
   try { const response=await fetch('/api/transfers/stations?limit=100'); if(!response.ok) throw new Error(); const body=await response.json(); stations.value=body.data || [] }
   catch { stationError.value='便捷换乘车站资料暂未加载，请刷新后重试。' }
@@ -108,9 +115,9 @@ async function suggest(which) {
   try { const response=await fetch(`/api/stations/search?keyword=${encodeURIComponent(value)}&limit=20`); if(!response.ok) return; const body=await response.json(); if(id===suggestionIds[which]) (which==='from' ? fromSuggestions : toSuggestions).value=body.data || [] }
   catch { /* Submission reports lookup failures; typing keeps its value. */ }
 }
-async function resolveStation(text) {
+async function resolveStation(text, signal) {
   const word=text.trim()
-  const response=await fetch(`/api/stations/search?keyword=${encodeURIComponent(word)}&limit=20`)
+  const response=await fetch(`/api/stations/search?keyword=${encodeURIComponent(word)}&limit=20`, {signal})
   if(!response.ok) throw new Error('车站搜索暂不可用，请稍后重试')
   const body=await response.json()
   const station=body.data?.find(s=>[s.name,s.telecode,s.pinyin,s.pinyin_abbr].some(v=>v.toLowerCase()===word.toLowerCase()))
@@ -131,9 +138,10 @@ async function search() {
       if(!s) throw new Error(`“${word}”尚无可用的便捷换乘资料，请从已收录站中选择`)
       return s.station_code
     })
-    const [from,to]=await Promise.all([resolveStation(fromText.value),resolveStation(toText.value)])
-    if(id!==requestId) return
-    const data=await controller.search({from_station:from,to_station:to,train_date:trainDate.value,transfer_count:transferCount.value,min_transfer_minutes:minMinutes.value,ordered_via_stations:via,allowed_seats:[...allowedSeats.value],sort_by:sortBy.value})
+    const data=await controller.search({train_date:trainDate.value,transfer_count:transferCount.value,min_transfer_minutes:minMinutes.value,ordered_via_stations:via,allowed_seats:[...allowedSeats.value],sort_by:sortBy.value}, async(request,signal)=>{
+      const [from,to]=await Promise.all([resolveStation(fromText.value,signal),resolveStation(toText.value,signal)])
+      return {...request,from_station:from,to_station:to}
+    })
     if(id===requestId && data) result.value=data
   } catch(e) { if(id===requestId) error.value=e instanceof SyntaxError ? '查询服务响应异常，请稍后重试' : e.message }
   finally { if(id===requestId) loading.value=false }

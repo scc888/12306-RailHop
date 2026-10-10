@@ -61,36 +61,48 @@ export function createTransferQueryController(fetchImpl = fetch, timeoutMs = 550
   let active = null
   return {
     cancel() { sequence++; active?.abort() },
-    async search(request) {
+    async search(request, prepareRequest = null) {
       active?.abort()
       const id = ++sequence
       const abort = new AbortController()
       active = abort
       let timer
+      let onAbort
+      let timedOut = false
       try {
-        const response = await Promise.race([
-          fetchImpl('/api/transfers/query', {
+        const interrupted = new Promise((_, reject) => {
+          onAbort = () => reject(new Error(timedOut ? '查询超时，请稍后重试' : '查询已取消'))
+          abort.signal.addEventListener('abort', onAbort, { once: true })
+          timer = setTimeout(() => { timedOut = true; abort.abort() }, timeoutMs)
+        })
+        const work = (async () => {
+          const prepared = prepareRequest ? await prepareRequest(request, abort.signal) : request
+          if (id !== sequence || abort.signal.aborted) return null
+          const response = await fetchImpl('/api/transfers/query', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(request), signal: abort.signal
-          }),
-          new Promise((_, reject) => { timer = setTimeout(() => { abort.abort(); reject(new Error('查询超时，请稍后重试')) }, timeoutMs) })
-        ])
-        if (id !== sequence) return null
-        let payload
-        try { payload = await response.json() }
-        catch { throw new Error('中转查询服务暂不可用，请稍后重试') }
-        if (id !== sequence) return null
-        if (!response.ok || payload.code !== 200) {
-          throw new Error(typeof payload.detail === 'string' ? payload.detail : payload.msg || '查询条件无效或服务繁忙，请检查后重试')
-        }
-        if (!payload.data || !Array.isArray(payload.data.plans) || !payload.data.meta) {
-          throw new Error('中转查询响应格式异常，请稍后重试')
-        }
-        return payload.data
+            body: JSON.stringify(prepared), signal: abort.signal
+          })
+          if (id !== sequence) return null
+          let payload
+          try { payload = await response.json() }
+          catch { throw new Error('中转查询服务暂不可用，请稍后重试') }
+          if (id !== sequence) return null
+          if (!response.ok || payload.code !== 200) {
+            throw new Error(typeof payload.detail === 'string' ? payload.detail : payload.msg || '查询条件无效或服务繁忙，请检查后重试')
+          }
+          if (!payload.data || !Array.isArray(payload.data.plans) || !payload.data.meta) {
+            throw new Error('中转查询响应格式异常，请稍后重试')
+          }
+          return payload.data
+        })()
+        return await Promise.race([work, interrupted])
       } catch (error) {
         if (id !== sequence) return null
         throw new Error(error.name === 'AbortError' ? '查询已取消' : error.message || '网络连接失败，请稍后重试')
-      } finally { clearTimeout(timer) }
+      } finally {
+        clearTimeout(timer)
+        abort.signal.removeEventListener('abort', onAbort)
+      }
     }
   }
 }

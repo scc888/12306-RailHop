@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 from datetime import datetime, date, timedelta
 from app.models.transfer_schemas import TransferStation, TransferLeg, TransferSeat, TransferQueryRequest
 from app.services.transfer_station_service import TransferStationService
@@ -145,6 +146,35 @@ class PlannerTests(unittest.TestCase):
         legs[1].run_date = legs[0].run_date
         result, _ = self.search(legs)
         self.assertEqual(result.plans, [])
+
+    def test_deadline_stops_cached_expansion_and_warm_cache(self):
+        legs = self.pair() + [leg('AAA','BBB','2026-10-10T08:05','2026-10-10T09:00','G3')]
+        planner = TransferPlanner(TransferStationService(entries=[station('BBB')]), Samples(legs),
+            limits={'request_interval':0,'horizon_hours':3}, sleep_fn=lambda s: None)
+        request = TransferQueryRequest(from_station='AAA',to_station='ZZZ',train_date='2026-10-10')
+        clock=[0]
+        original=planner._plan
+        def finish_one(*args):
+            value=original(*args)
+            clock[0]=46
+            return value
+        with patch('app.services.transfer_planner.time.monotonic',side_effect=lambda:clock[0]), \
+             patch.object(planner,'_plan',side_effect=finish_one):
+            result=planner.search(request,now=NOW)
+        self.assertEqual(len(result.plans),1)
+        self.assertIn('time_limit',result.meta.truncation_reasons)
+        planner.limits['max_seconds']=0
+        with patch('app.services.transfer_planner.time.monotonic',return_value=0):
+            result=planner.search(request,now=NOW)
+        self.assertEqual(result.plans,[])
+        self.assertIn('time_limit',result.meta.truncation_reasons)
+
+    def test_result_limit_keeps_later_better_plan_and_marks_truncation(self):
+        legs = self.pair() + [leg('AAA','BBB','2026-10-10T08:05','2026-10-10T09:00','G3',100)]
+        result, _ = self.search(legs, limits={'max_results':1}, sort_by='price')
+        self.assertEqual(len(result.plans),1)
+        self.assertEqual(result.plans[0].legs[0].train_code,'G3')
+        self.assertIn('result_limit',result.meta.truncation_reasons)
 
 
 if __name__ == '__main__':

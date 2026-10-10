@@ -180,17 +180,16 @@
 
 **Files:** 修改 `README.md`；必要的回归补充限于上述测试文件。
 
-- [ ] 使用固定铁路响应，通过真实 API→服务→转换→前端请求合同，覆盖跨日两次中转、指定顺序、15 分钟边界、改选席别与缺价。
-- [ ] 运行后端 `python -m unittest test_transfer_stations test_transfer_gateway test_transfer_planner test_transfer_api`；检查退出码及测试总数。
-- [ ] 运行前端 `npm.cmd test`、`npm.cmd run build`；仅在新失败或新改动需要时重复。
-- [ ] 做一次限速的真实只读查询，分别记录网络是否成功、数据条数、候选范围和是否有有效路线；实时无票或网络受限时如实记录，不据此修改测试成固定通过。
-- [ ] README 写明仅查询、1～3 中转、默认 15 分钟、席别选择、站点资料来源、72 小时/候选站范围、部分结果提示、接口与验证命令。
-- [ ] 对最终改动做一次整体审查，核对设计 12 个验收场景，尤其检查候选受限时不宣称全国最优、查询异常不宣称无票、没有交易接口或虚构车站资料。
-- [ ] 执行 `git diff --check`、精确暂存后 `git diff --cached --check`，核对仅有计划文件；提交 `docs: document transfer query coverage and validation`。
-- [ ] 最后核对当前分支、提交和工作区；报告样本测试、浏览器验证及实时查询各自结果。推送或合并按用户后续指示处理。
+- [x] 使用固定铁路响应，通过真实 API→服务→转换→前端请求合同，覆盖跨日两次中转、指定顺序、15 分钟边界、改选席别与缺价。
+- [x] 运行后端 `python -m unittest test_transfer_stations test_transfer_gateway test_transfer_planner test_transfer_api`；检查退出码及测试总数。
+- [x] 运行前端 `npm.cmd test`、`npm.cmd run build`；仅在新失败或新改动需要时重复。
+- [x] 做一次限速的真实只读查询，分别记录网络是否成功、数据条数、候选范围和是否有有效路线；实时无票或网络受限时如实记录，不据此修改测试成固定通过。
+- [x] README 写明仅查询、1～3 中转、默认 15 分钟、席别选择、站点资料来源、72 小时/候选站范围、部分结果提示、接口与验证命令。
+- [x] 对最终改动做一次整体审查，核对设计 12 个验收场景，尤其检查候选受限时不宣称全国最优、查询异常不宣称无票、没有交易接口或虚构车站资料。
+- [x] 执行 `git diff --check`、精确暂存后 `git diff --cached --check`，核对仅有计划文件；提交 `docs: document transfer query coverage and validation`。
+- [x] 最后核对当前分支、提交和工作区；报告样本测试、浏览器验证及实时查询各自结果。推送或合并按用户后续指示处理。
 
 ## 执行方式
 
 用户于 2026-10-10 授权开始执行，采用当前会话直接按顺序实施并在最后独立整体审查。
-已执行任务 1～5；任务 6 的样本、构建、浏览器及真实查询已验证，待最后整体审查和交付核对。
-
+任务 1～6 已完成。整体审查的 3 项问题均经回归复现、修复及完整验证；记录见 docs/superpowers/transfer-query-validation.md。

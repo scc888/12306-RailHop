@@ -48,12 +48,21 @@ class TransferPlanner:
         if len(candidates) < request.transfer_count:
             return TransferSearchResult(plans=[], meta=meta)
         deadline = time.monotonic() + self.limits['max_seconds']
+
+        def expired():
+            if time.monotonic() >= deadline:
+                truncated('time_limit')
+                return True
+            return False
+
         local_cache = {}
         success_count = 0
         last_request_at = None
 
         def query(day, a, b):
             nonlocal success_count, last_request_at
+            if expired():
+                return None
             key = (day, a, b, tuple(request.allowed_seats))
             if key in local_cache:
                 return local_cache[key]
@@ -62,9 +71,6 @@ class TransferPlanner:
                 local_cache[key] = cached[1]
                 success_count += 1
                 return cached[1]
-            if time.monotonic() >= deadline:
-                truncated('time_limit')
-                return None
             if meta.query_count >= self.limits['max_queries']:
                 truncated('query_limit')
                 return None
@@ -100,13 +106,18 @@ class TransferPlanner:
             return values
 
         paths = [([], [], [])]  # legs, intermediate station codes, connection records
-        complete = []
+        complete = {}  # Retain only the best max_results unique plans during enumeration.
         expanded = 0
         exhausted = False
         for stage in range(request.transfer_count + 1):
+            if expired():
+                break
             next_paths = []
             paths.sort(key=lambda p: (p[0][-1].arrival_at - p[0][0].departure_at).total_seconds() if p[0] else 0)
             for legs, via, connections in paths:
+                if expired():
+                    exhausted = True
+                    break
                 if expanded >= self.limits['max_states']:
                     truncated('state_limit')
                     exhausted = True
@@ -117,6 +128,9 @@ class TransferPlanner:
                 matched = sum(1 for c in via if c in required)
                 # Required stations already seen must form exactly the required prefix.
                 for target in targets:
+                    if expired():
+                        exhausted = True
+                        break
                     if target in via or target == start:
                         continue
                     if stage < request.transfer_count:
@@ -139,6 +153,9 @@ class TransferPlanner:
                             exhausted = True
                             break
                         for item in values:
+                            if expired():
+                                exhausted = True
+                                break
                             if (item.from_station, item.to_station) != (start, target):
                                 continue
                             if item.departure_at.date() != day or item.departure_at < earliest:
@@ -166,7 +183,12 @@ class TransferPlanner:
                                     required_minutes=effective, source_url=station.source_url)]
                             new_legs = legs + [item]
                             if stage == request.transfer_count:
-                                complete.append(self._plan(new_legs, new_connections))
+                                plan = self._plan(new_legs, new_connections)
+                                complete[plan.id] = plan
+                                if len(complete) > self.limits['max_results']:
+                                    truncated('result_limit')
+                                    worst = max(complete, key=lambda key: self._sort_key(complete[key], request.sort_by))
+                                    del complete[worst]
                             elif len(next_paths) < self.limits['max_states']:
                                 next_paths.append((new_legs, via + [target], new_connections))
                             else:
@@ -181,10 +203,8 @@ class TransferPlanner:
             paths = next_paths
             if exhausted:
                 break
-        unique = {plan.id: plan for plan in complete}
-        plans = sorted(unique.values(), key=lambda plan: self._sort_key(plan, request.sort_by))
-        if len(plans) > self.limits['max_results']:
-            truncated('result_limit')
+        expired()
+        plans = sorted(complete.values(), key=lambda plan: self._sort_key(plan, request.sort_by))
         if meta.failed_pairs:
             meta.status = 'partial' if success_count else 'upstream_error'
         elif meta.truncated:
