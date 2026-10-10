@@ -5,6 +5,9 @@ from app.main import app
 from test_transfer_planner import Samples, NOW, leg
 from app.services.transfer_planner import TransferPlanner
 from app.services.transfer_station_service import TransferStationService
+from app.services.transfer_ticket_gateway import TransferTicketGateway
+from app.services.client_12306 import Ticket12306Client
+from test_transfer_gateway import row, railway_response
 
 
 class TransferApiTests(unittest.TestCase):
@@ -45,6 +48,54 @@ class TransferApiTests(unittest.TestCase):
             transfer_lock.release()
         self.assertEqual(self.client.post('/api/transfers/query', json=self.body | dict(ordered_via_stations=['AAA'])).status_code, 400)
         self.assertFalse(transfer_lock.locked())
+
+    def test_two_transfers_across_midnight_through_real_gateway(self):
+        from app.api.transfer_routes import get_transfer_planner
+
+        def sample(a, b, start, arrive, duration, train, priced=True):
+            parts = row(start, arrive, duration, dest=b).split('|')
+            parts[2:8] = [train, train, a, b, a, b]
+            parts[39] = 'O012350000M014000000' if priced else ''
+            parts[31] = '有'
+            return '|'.join(parts)
+
+        responses = {
+            ('2026-10-10', 'SHH', 'NKH'): [sample('SHH','NKH','23:50','01:50','02:00','G1')],
+            ('2026-10-11', 'NKH', 'WHN'): [sample('NKH','WHN','02:05','03:05','01:00','G2')],
+            ('2026-10-11', 'WHN', 'BJP'): [sample('WHN','BJP','03:20','05:20','02:00','G3', False)],
+        }
+
+        def network(url, params, **kwargs):
+            key = tuple(params[f'leftTicketDTO.{name}'] for name in ('train_date','from_station','to_station'))
+            return railway_response({'status': True, 'data': {'result': responses.get(key, []), 'map': {}}})
+
+        railway = Ticket12306Client()
+        planner = TransferPlanner(TransferStationService(), TransferTicketGateway(client=railway), sleep_fn=lambda s: None)
+        original = planner.search
+        planner.search = lambda request: original(request, now=NOW)
+        app.dependency_overrides[get_transfer_planner] = lambda: planner
+        try:
+            with patch.object(railway, 'ensure_init'), patch.object(railway.session, 'get', side_effect=network):
+                result = self.client.post('/api/transfers/query', json=self.body | dict(
+                    transfer_count=2, ordered_via_stations=['NKH','WHN']))
+                self.assertEqual(result.status_code, 200)
+                plans = result.json()['data']['plans']
+                self.assertEqual(len(plans), 1)
+                plan = plans[0]
+                self.assertEqual(len(plan['legs']), 3)
+                self.assertEqual([c['station']['station_code'] for c in plan['connections']], ['NKH','WHN'])
+                self.assertEqual([c['wait_minutes'] for c in plan['connections']], [15,15])
+                self.assertEqual(plan['legs'][0]['arrival_at'], '2026-10-11T01:50:00+08:00')
+                self.assertEqual(plan['legs'][1]['departure_at'], '2026-10-11T02:05:00+08:00')
+                self.assertEqual(plan['total_minutes'], 330)
+                self.assertIsNone(plan['total_price_fen'])
+                self.assertEqual(plan['known_price_fen'], 24700)
+                self.assertEqual([s['code'] for s in plan['legs'][0]['seats']], ['ze','zy'])
+                reversed_order = self.client.post('/api/transfers/query', json=self.body | dict(
+                    transfer_count=2, ordered_via_stations=['WHN','NKH']))
+                self.assertEqual(reversed_order.json()['data']['plans'], [])
+        finally:
+            app.dependency_overrides.clear()
 
     def test_legacy_query_contract_and_no_transactions(self):
         with patch('app.api.routes.client_12306.query_tickets', return_value=[]):

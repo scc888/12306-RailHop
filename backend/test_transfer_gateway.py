@@ -66,6 +66,21 @@ class GatewayTests(unittest.TestCase):
         for bad in ['', '--', 'NaN', '¥-1', '¥1.001', '未知']:
             self.assertIsNone(parse_price_fen(bad))
 
+    def test_redirect_path_and_each_request_timeout(self):
+        client = self.client(None)
+        client.session.get.side_effect = [railway_response('', 302),
+            railway_response({'c_url':'leftTicket/queryA'}, 302),
+            railway_response({'status':True, 'data':{'result':[], 'map':{}}})]
+        self.assertEqual(client.query_tickets_strict('2026-10-10','SHH','BJP',timeout_seconds=2), [])
+        self.assertTrue(client.session.get.call_args_list[-1].args[0].endswith('/leftTicket/queryA'))
+        for call in client.session.get.call_args_list:
+            self.assertGreater(call.kwargs['timeout'], 0)
+            self.assertLessEqual(call.kwargs['timeout'], 2)
+        for bad in [{'c_url':'https://example.com/'}, {'c_url':'../query'}, {}, 'oops']:
+            client.session.get.side_effect = [railway_response('',302),railway_response(bad,302)]
+            with self.subTest(bad=bad), self.assertRaises(RailwayQueryError):
+                client.query_tickets_strict('2026-10-10','SHH','BJP',timeout_seconds=2)
+
 
 if __name__ == '__main__':
     unittest.main()

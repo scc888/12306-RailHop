@@ -120,6 +120,32 @@ class PlannerTests(unittest.TestCase):
         result, _ = self.search(legs, stations=[station('BBB', same_day_only=True)])
         self.assertEqual(result.plans, [])
 
+    def test_partial_failure_time_state_budget_and_running_identity(self):
+        class Partial(Samples):
+            def query(self, day, a, b, seats, timeout):
+                if b == 'CCC':
+                    raise RailwayQueryError('timeout')
+                return super().query(day,a,b,seats,timeout)
+        planner = TransferPlanner(TransferStationService(entries=[station('BBB'), station('CCC')]),
+            Partial(self.pair()), sleep_fn=lambda s: None)
+        request = TransferQueryRequest(from_station='AAA', to_station='ZZZ', train_date='2026-10-10')
+        result = planner.search(request, now=NOW)
+        self.assertEqual(len(result.plans), 1)
+        self.assertEqual(result.meta.status, 'partial')
+        self.assertTrue(result.meta.failed_pairs)
+        for limits, reason in [({'max_seconds':0}, 'time_limit'), ({'max_states':1},'state_limit')]:
+            result, _ = self.search(self.pair(), limits=limits)
+            self.assertTrue(result.meta.truncated)
+            self.assertIn(reason, result.meta.truncation_reasons)
+        legs = self.pair()
+        legs[1].train_no = legs[0].train_no
+        legs[0].run_date, legs[1].run_date = date(2026,10,9), date(2026,10,10)
+        result, _ = self.search(legs)
+        self.assertEqual(len(result.plans), 1)
+        legs[1].run_date = legs[0].run_date
+        result, _ = self.search(legs)
+        self.assertEqual(result.plans, [])
+
 
 if __name__ == '__main__':
     unittest.main()
