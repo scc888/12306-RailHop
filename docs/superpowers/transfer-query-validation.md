@@ -75,3 +75,18 @@ node frontend/browser-tests/transfer-regressions.cjs
 ```
 
 可用 BROWSER_URL 指定前端地址，BROWSER_CHANNEL 指定已安装的浏览器通道。
+
+## 2026-10-10 补充：默认使用官方参考时间
+
+用户要求有官方参考时间时默认使用官方值。已核实中国铁路说明：12306 App 提供按车站查询换乘时间，查询结果仅供参考；没有在该说明中发布全国统一的分钟数。
+来源：https://www.wuhan.gov.cn/hdjl/rdhy/202310/t20231006_2274307.shtml
+
+从官方网页 https://www.12306.cn/index/view/infos/sale_time.html 的公开脚本 main_v60009.js 核对实际查询合同：POST https://www.12306.cn/index/otn/index12306/queryLCtime，表单 trainDate=20261011 与 from_station_telecode。脚本以相同电报码标记站内换乘，relay_time 按分钟展示。
+
+已逐站查询并保存原始同站记录于 backend/data/transfer_time_reference.json：12 条成功，南京南/上海虹桥等 15 分钟，上海站 30 分钟，郑州东 60 分钟。仅使用同站正数参考值，保留官方记录中的有效起止日期。communication_code 未作未经核实的语义推断；便捷通道资格仍使用独立来源及已有保守条件。
+
+API 默认 min_transfer_minutes=null（省略同效），每站按接续出发日期选择适用官方参考；自定义时取较大值；无适用官方数据则基础参考回退 15 分钟。卡片分别展示实际阈值、官方值、时间来源和采集日期。页面默认勾选官方时间模式，关闭后可输入个人时间。
+
+验证：先观察默认值/null、官方数值及规则测试失败，再实现并通过；后端固定样本25项、完整33项，前端8项，生产构建通过。Chrome 浏览器确认官方模式默认启用且请求传null、切换自定义清空旧结果并传60；取消与排序回归亦通过。原有 backend/logs/ 保留。
+
+官方时间为本次采集快照，未声称每次实时刷新或保证赶上下一班车。

@@ -8,7 +8,8 @@ class StationTests(unittest.TestCase):
     def test_request_defaults_and_invalid_inputs(self):
         base = dict(from_station='SHH', to_station='BJP', train_date='2026-10-11')
         request = TransferQueryRequest(**base)
-        self.assertEqual((request.transfer_count, request.min_transfer_minutes, request.allowed_seats), (1, 15, ['ze', 'zy']))
+        self.assertEqual((request.transfer_count, request.min_transfer_minutes, request.allowed_seats), (1, None, ['ze', 'zy']))
+        self.assertIsNone(TransferQueryRequest(**base, min_transfer_minutes=None).min_transfer_minutes)
         for change in [dict(transfer_count=0), dict(transfer_count=4), dict(min_transfer_minutes=14),
                        dict(allowed_seats=[]), dict(allowed_seats=['bad']),
                        dict(ordered_via_stations=['NJH', 'NJH']), dict(ordered_via_stations=['NJH', 'HGH']),
@@ -35,6 +36,15 @@ class StationTests(unittest.TestCase):
         for code in ['AAA', 'BBB']:
             with self.assertRaises(ValueError):
                 service.validate_via([code])
+
+    def test_official_time_values_and_separate_provenance(self):
+        service = TransferStationService()
+        for code, minutes in [('NKH',15),('AOH',15),('SHH',30),('ZAF',60)]:
+            with self.subTest(code=code):
+                station=service.validate_via([code])[0]
+                self.assertEqual(station.reference_min_minutes,minutes)
+                self.assertIn('12306.cn',station.reference_time_source_url)
+                self.assertEqual(station.reference_time_checked_at.isoformat(),'2026-10-10')
 
 
 if __name__ == '__main__':

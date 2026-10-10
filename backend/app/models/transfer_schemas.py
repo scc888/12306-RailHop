@@ -12,7 +12,8 @@ class TransferQueryRequest(BaseModel):
     to_station: str = Field(pattern=r'^[A-Z]{3}$')
     train_date: date
     transfer_count: int = Field(1, ge=1, le=3)
-    min_transfer_minutes: int = Field(15, ge=15, le=1440)
+    # None selects each station's official reference; an explicit value is a personal floor.
+    min_transfer_minutes: int | None = Field(None, ge=15, le=1440)
     ordered_via_stations: list[str] = Field(default_factory=list)
     allowed_seats: list[str] = Field(default_factory=lambda: ['ze', 'zy'])
     sort_by: Literal['duration', 'arrival', 'price'] = 'duration'
@@ -39,6 +40,10 @@ class TransferStation(BaseModel):
     pinyin_abbr: str
     convenient_transfer_confirmed: bool = True
     reference_min_minutes: int | None = Field(None, ge=1)
+    reference_time_source_url: str | None = None
+    reference_time_checked_at: date | None = None
+    reference_time_valid_from: date | None = None
+    reference_time_valid_to: date | None = None
     source_url: str
     source_published_at: date
     verified_at: date
@@ -47,6 +52,13 @@ class TransferStation(BaseModel):
     allowed_train_prefixes: list[str] = Field(default_factory=list)
     same_day_only: bool = False
     priority: int = 100
+
+    def reference_minutes_on(self, day: date) -> int | None:
+        if self.reference_time_valid_from and day < self.reference_time_valid_from:
+            return None
+        if self.reference_time_valid_to and day > self.reference_time_valid_to:
+            return None
+        return self.reference_min_minutes
 
 
 class TransferSeat(BaseModel):
@@ -75,6 +87,7 @@ class TransferConnection(BaseModel):
     station: TransferStation
     wait_minutes: int
     required_minutes: int
+    official_min_minutes: int | None = None
     source_url: str
 
 

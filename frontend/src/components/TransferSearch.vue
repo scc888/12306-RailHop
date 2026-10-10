@@ -23,9 +23,11 @@
           <label class="text-xs font-semibold text-slate-600">中转站数量
             <select v-model.number="transferCount" class="transfer-input"><option v-for="n in 3" :key="n" :value="n">{{ n }} 个站 · {{ n + 1 }} 段车次</option></select>
           </label>
-          <label class="text-xs font-semibold text-slate-600">每次最少换乘时间（分钟）
-            <input v-model.number="minMinutes" type="number" min="15" max="1440" step="1" required class="transfer-input" />
-          </label>
+          <div class="text-xs font-semibold text-slate-600">
+            <label class="flex items-center gap-2"><input v-model="useOfficialTime" type="checkbox" class="accent-blue-600" />按各中转站官方参考时间（默认）</label>
+            <label v-if="!useOfficialTime" class="block mt-2">个人最少换乘时间（分钟）<input v-model.number="minMinutes" type="number" min="15" max="1440" step="1" required class="transfer-input" /></label>
+            <p v-else class="mt-2 font-normal text-slate-500 leading-relaxed">每个站分别计算；缺少适用官方数据时使用 15 分钟。</p>
+          </div>
           <label class="text-xs font-semibold text-slate-600">结果排序
             <select v-model="sortBy" class="transfer-input"><option value="duration">全程耗时最短</option><option value="arrival">最早到达</option><option value="price">所选席别总价最低</option></select>
           </label>
@@ -46,7 +48,7 @@
           <div class="flex flex-wrap gap-2"><label v-for="seat in seatOptions" :key="seat.code" class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs cursor-pointer" :class="allowedSeats.includes(seat.code) ? 'bg-blue-50 text-blue-800 border-blue-200' : 'bg-white text-slate-500 border-slate-200'"><input v-model="allowedSeats" type="checkbox" :value="seat.code" class="accent-blue-600" />{{ seat.name }}</label></div>
         </fieldset>
         <div class="flex flex-wrap justify-between items-center gap-4 border-t border-slate-100 pt-4">
-          <p class="text-xs text-slate-500 max-w-xl leading-relaxed">15 分钟是默认查询阈值，车站有更高参考值时按较高值筛选。请结合行李、步行速度及现场检票安排预留时间。</p>
+          <p class="text-xs text-slate-500 max-w-xl leading-relaxed">默认使用 12306 各站参考时间；自定义时取个人设置与官方值中的较大值。参考数据为已采集快照，实际安排以车站为准。</p>
           <button type="submit" :disabled="loading" class="px-6 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 cursor-pointer">{{ loading ? '正在寻找路线…' : '查询中转方案' }}</button>
         </div>
       </form>
@@ -77,6 +79,7 @@ const toText = ref(props.initialTo || '')
 const trainDate = ref(props.initialDate || today)
 const transferCount = ref(1)
 const minMinutes = ref(15)
+const useOfficialTime = ref(true)
 const viaTexts = ref([''])
 const allowedSeats = ref(props.initialSeats?.length ? [...props.initialSeats] : ['ze','zy'])
 const sortBy = ref('duration')
@@ -96,7 +99,7 @@ const sortedPlans = computed(() => sortPlans(result.value?.plans || [],sortBy.va
 const truncationText = computed(() => (result.value?.meta.truncation_reasons || []).map(r=>reasons[r] || r).join('；'))
 const candidateNames = computed(() => (result.value?.meta.candidate_station_codes || []).map(c=>stations.value.find(s=>s.station_code===c)?.station_name || c).join('、'))
 function invalidate() { requestId++; controller.cancel(); loading.value=false; result.value=null; error.value=''; queryNotice.value='' }
-watch([fromText,toText,trainDate,transferCount,minMinutes,viaTexts,allowedSeats],invalidate,{deep:true,flush:'sync'})
+watch([fromText,toText,trainDate,transferCount,minMinutes,useOfficialTime,viaTexts,allowedSeats],invalidate,{deep:true,flush:'sync'})
 watch(sortBy,()=>{
   const needsQuery = !!result.value || loading.value
   invalidate()
@@ -138,7 +141,7 @@ async function search() {
       if(!s) throw new Error(`“${word}”尚无可用的便捷换乘资料，请从已收录站中选择`)
       return s.station_code
     })
-    const data=await controller.search({train_date:trainDate.value,transfer_count:transferCount.value,min_transfer_minutes:minMinutes.value,ordered_via_stations:via,allowed_seats:[...allowedSeats.value],sort_by:sortBy.value}, async(request,signal)=>{
+    const data=await controller.search({train_date:trainDate.value,transfer_count:transferCount.value,min_transfer_minutes:useOfficialTime.value ? null : minMinutes.value,ordered_via_stations:via,allowed_seats:[...allowedSeats.value],sort_by:sortBy.value}, async(request,signal)=>{
       const [from,to]=await Promise.all([resolveStation(fromText.value,signal),resolveStation(toText.value,signal)])
       return {...request,from_station:from,to_station:to}
     })

@@ -176,6 +176,29 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(result.plans[0].legs[0].train_code,'G3')
         self.assertIn('result_limit',result.meta.truncation_reasons)
 
+    def test_official_default_personal_floor_and_expired_reference(self):
+        for reference, custom, count, required in [(60,None,0,None),(15,None,1,15),
+                (None,None,1,15),(10,None,1,10),(10,30,0,None),(15,30,0,None)]:
+            with self.subTest(reference=reference,custom=custom):
+                result,_=self.search(self.pair(),stations=[station('BBB',reference)],min_transfer_minutes=custom)
+                self.assertEqual(len(result.plans),count)
+                if count:
+                    connection=result.plans[0].connections[0]
+                    self.assertEqual(connection.required_minutes,required)
+                    self.assertEqual(connection.official_min_minutes,reference)
+        expired=station('BBB',60,reference_time_valid_from='2000-01-01',reference_time_valid_to='2026-10-09')
+        result,_=self.search(self.pair(),stations=[expired])
+        self.assertEqual(result.plans[0].connections[0].required_minutes,15)
+        self.assertIsNone(result.plans[0].connections[0].official_min_minutes)
+        sixty=[self.pair()[0],leg('BBB','ZZZ','2026-10-10T10:00','2026-10-10T11:00','G2')]
+        result,_=self.search(sixty,stations=[station('BBB',60)])
+        self.assertEqual(result.plans[0].connections[0].required_minutes,60)
+        overnight=[leg('AAA','BBB','2026-10-10T23:00','2026-10-11T00:35'),
+                   leg('BBB','ZZZ','2026-10-11T00:50','2026-10-11T02:00','G2')]
+        future=station('BBB',60,reference_time_valid_from='2026-10-11',reference_time_valid_to='2099-12-31')
+        result,_=self.search(overnight,stations=[future])
+        self.assertEqual(result.plans,[])
+
 
 if __name__ == '__main__':
     unittest.main()

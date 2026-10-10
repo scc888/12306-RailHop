@@ -141,8 +141,8 @@ class TransferPlanner:
                             continue
                     elif matched != len(required):
                         continue
-                    effective = max(request.min_transfer_minutes,
-                                    by_code[start].reference_min_minutes or 0) if legs else 0
+                    # Use the actual connecting departure day to check reference validity below.
+                    effective = max(request.min_transfer_minutes or 0, 1) if legs else 0
                     earliest = legs[-1].arrival_at + timedelta(minutes=effective) if legs else now
                     horizon = legs[0].departure_at + timedelta(hours=self.limits['horizon_hours']) if legs else None
                     day = earliest.date() if legs else request.train_date
@@ -173,6 +173,10 @@ class TransferPlanner:
                             new_connections = connections
                             if legs:
                                 station = by_code[start]
+                                official_minutes = station.reference_minutes_on(item.departure_at.date())
+                                required_minutes = max(request.min_transfer_minutes or 0, official_minutes or 15)
+                                if item.departure_at < legs[-1].arrival_at + timedelta(minutes=required_minutes):
+                                    continue
                                 if station.same_day_only and legs[-1].arrival_at.date() != item.departure_at.date():
                                     continue
                                 prefixes = station.allowed_train_prefixes
@@ -180,7 +184,8 @@ class TransferPlanner:
                                     continue
                                 wait = int((item.departure_at - legs[-1].arrival_at).total_seconds() // 60)
                                 new_connections = connections + [TransferConnection(station=station, wait_minutes=wait,
-                                    required_minutes=effective, source_url=station.source_url)]
+                                    required_minutes=required_minutes, official_min_minutes=official_minutes,
+                                    source_url=station.source_url)]
                             new_legs = legs + [item]
                             if stage == request.transfer_count:
                                 plan = self._plan(new_legs, new_connections)

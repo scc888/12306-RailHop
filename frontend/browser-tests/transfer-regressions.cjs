@@ -6,7 +6,7 @@ const fs=require('fs');
   const browser=await chromium.launch({headless:true,channel:process.env.BROWSER_CHANNEL || 'chrome'});
   const failures=[];
   try {
-    for(const scenario of ['unmount','sort']) {
+    for(const scenario of ['unmount','sort','official_time']) {
       const page=await browser.newPage();
       try {
         const snapshot=JSON.parse(fs.readFileSync(`${__dirname}/fixtures/transfer.json`,'utf8'));
@@ -24,6 +24,8 @@ const fs=require('fs');
         await page.route('**/api/stations/search?**',route=>route.fulfill({json:stationResponse}));
         await page.route('**/api/transfers/query',route=>{
           posts++;
+          const request=route.request().postDataJSON();
+          assert.equal(request.min_transfer_minutes,scenario==='official_time' && posts===2 ? 60 : null);
           if(scenario==='sort' && posts===2) {
             assert.equal(route.request().postDataJSON().sort_by,'price');
             snapshot.data.plans[0].legs[0].seats.forEach(s=>s.price_fen=100);
@@ -33,6 +35,7 @@ const fs=require('fs');
         await page.goto(process.env.BROWSER_URL || 'http://127.0.0.1:5173');
         await page.getByRole('button',{name:'中转查询',exact:true}).click();
         await page.getByText('已收录 12 个').waitFor();
+        assert.equal(await page.getByRole('checkbox',{name:'按各中转站官方参考时间（默认）'}).isChecked(),true);
         if(scenario==='unmount') {
           await page.route('**/api/stations/search?**',route=>pending.push(route));
           await page.getByRole('button',{name:'查询中转方案',exact:true}).click();
@@ -42,6 +45,15 @@ const fs=require('fs');
           for(const route of pending) await route.fulfill({json:stationResponse}).catch(()=>{});
           await page.waitForTimeout(150);
           assert.equal(posts,0,'unmount during station lookup must not start POST');
+        } else if(scenario==='official_time') {
+          await page.getByRole('button',{name:'查询中转方案',exact:true}).click();
+          await page.getByTestId('transfer-plan').first().waitFor();
+          await page.getByRole('checkbox',{name:'按各中转站官方参考时间（默认）'}).uncheck();
+          assert.equal(await page.getByTestId('transfer-plan').count(),0);
+          await page.getByRole('spinbutton').fill('60');
+          await page.getByRole('button',{name:'查询中转方案',exact:true}).click();
+          await page.getByTestId('transfer-plan').first().waitFor();
+          assert.equal(posts,2);
         } else {
           await page.getByRole('button',{name:'查询中转方案',exact:true}).click();
           await page.getByTestId('transfer-plan').first().waitFor();

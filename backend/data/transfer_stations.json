@@ -5,7 +5,7 @@
     "pinyin": "nanjingnan",
     "pinyin_abbr": "njn",
     "convenient_transfer_confirmed": true,
-    "reference_min_minutes": null,
+    "reference_min_minutes": 15,
     "source_url": "https://www.nanjing.gov.cn/zzb/ywdt/msxx/202601/t20260115_5766991.html",
     "source_published_at": "2026-01-15",
     "verified_at": "2026-10-10",
@@ -17,7 +17,11 @@
       "C"
     ],
     "same_day_only": true,
-    "priority": 0
+    "priority": 0,
+    "reference_time_source_url": "https://www.12306.cn/index/view/infos/sale_time.html",
+    "reference_time_checked_at": "2026-10-10",
+    "reference_time_valid_from": "2000-01-01",
+    "reference_time_valid_to": "2099-12-31"
   },
   {
     "station_name": "上海虹桥",
@@ -25,7 +29,7 @@
     "pinyin": "shanghaihongqiao",
     "pinyin_abbr": "shhq",
     "convenient_transfer_confirmed": true,
-    "reference_min_minutes": null,
+    "reference_min_minutes": 15,
     "source_url": "https://www.thepaper.cn/newsDetail_forward_18691018",
     "source_published_at": "2022-06-22",
     "verified_at": "2026-10-10",
@@ -37,7 +41,11 @@
       "C"
     ],
     "same_day_only": true,
-    "priority": 4
+    "priority": 4,
+    "reference_time_source_url": "https://www.12306.cn/index/view/infos/sale_time.html",
+    "reference_time_checked_at": "2026-10-10",
+    "reference_time_valid_from": "2000-01-01",
+    "reference_time_valid_to": "2099-12-31"
   },
   {
     "station_name": "上海",
@@ -45,7 +53,7 @@
     "pinyin": "shanghai",
     "pinyin_abbr": "sh",
     "convenient_transfer_confirmed": true,
-    "reference_min_minutes": null,
+    "reference_min_minutes": 30,
     "source_url": "https://www.thepaper.cn/newsDetail_forward_18691018",
     "source_published_at": "2022-06-22",
     "verified_at": "2026-10-10",
@@ -57,7 +65,11 @@
       "C"
     ],
     "same_day_only": true,
-    "priority": 8
+    "priority": 8,
+    "reference_time_source_url": "https://www.12306.cn/index/view/infos/sale_time.html",
+    "reference_time_checked_at": "2026-10-10",
+    "reference_time_valid_from": "2000-01-01",
+    "reference_time_valid_to": "2099-12-31"
   },
   {
     "station_name": "上海南",
@@ -65,7 +77,7 @@
     "pinyin": "shanghainan",
     "pinyin_abbr": "shn",
     "convenient_transfer_confirmed": true,
-    "reference_min_minutes": null,
+    "reference_min_minutes": 15,
     "source_url": "https://www.thepaper.cn/newsDetail_forward_18691018",
     "source_published_at": "2022-06-22",
     "verified_at": "2026-10-10",
@@ -77,7 +89,11 @@
       "C"
     ],
     "same_day_only": true,
-    "priority": 9
+    "priority": 9,
+    "reference_time_source_url": "https://www.12306.cn/index/view/infos/sale_time.html",
+    "reference_time_checked_at": "2026-10-10",
+    "reference_time_valid_from": "2000-01-01",
+    "reference_time_valid_to": "2099-12-31"
   },
   {
     "station_name": "杭州东",
@@ -85,7 +101,7 @@
     "pinyin": "hangzhoudong",
     "pinyin_abbr": "hzd",
     "convenient_transfer_confirmed": true,
-    "reference_min_minutes": null,
+    "reference_min_minutes": 15,
     "source_url": "https://paper.people.com.cn/rmrb/pc/content/202502/07/content_30055184.html",
     "source_published_at": "2025-02-07",
     "verified_at": "2026-10-10",
@@ -97,7 +113,11 @@
       "C"
     ],
     "same_day_only": true,
-    "priority": 3
+    "priority": 3,
+    "reference_time_source_url": "https://www.12306.cn/index/view/infos/sale_time.html",
+    "reference_time_checked_at": "2026-10-10",
+    "reference_time_valid_from": "2000-01-01",
+    "reference_time_valid_to": "2099-12-31"
   },
   {
     "station_name": "郑州东",
@@ -105,7 +125,7 @@
     "pinyin": "zhengzhoudong",
     "pinyin_abbr": "zzd",
     "convenient_transfer_confirmed": true,
-    "reference_min_minutes": null,
+    "reference_min_minutes": 60,
     "source_url": "https://www.zhengdong.gov.cn/bmdt/8186685.jhtml",
     "source_published_at": "2024-01-31",
     "verified_at": "2026-10-10",
@@ -117,7 +137,11 @@
       "C"
     ],
     "same_day_only": true,
-    "priority": 1
+    "priority": 1,
+    "reference_time_source_url": "https://www.12306.cn/index/view/infos/sale_time.html",
+    "reference_time_checked_at": "2026-10-10",
+    "reference_time_valid_from": "2000-01-01",
+    "reference_time_valid_to": "2099-12-31"
   },
   {
     "station_name": "武汉",
@@ -125,7 +149,7 @@
     "pinyin": "wuhan",
     "pinyin_abbr": "wh",
     "convenient_transfer_confirmed": true,
-    "reference_min_minutes": null,
+    "reference_min_minutes": 15,
     "source_url": "https://www.wuhan.gov.cn/sy/whyw/202507/t20250718_2621692.shtml",
     "source_published_at": "2025-07-18",
     "verified_at": "2026-10-10",
@@ -137,7 +161,11 @@
       "C"
     ],
     "same_day_only": true,
-    "priority": 2
+    "priority": 2,
+    "reference_time_source_url": "https://www.12306.cn/index/view/infos/sale_time.html",
+    "reference_time_checked_at": "2026-10-10",
+    "reference_time_valid_from": "2017-09-16",
+    "reference_time_valid_to": "2099-12-31"
   },
   {
     "station_name": "长沙南",
@@ -145,7 +173,7 @@
     "pinyin": "changshanan",
     "pinyin_abbr": "csn",
     "convenient_transfer_confirmed": true,
-    "reference_min_minutes": null,
+    "reference_min_minutes": 15,
     "source_url": "https://news.cnr.cn/native/city/20170213/t20170213_523591490.shtml",
     "source_published_at": "2017-02-13",
     "verified_at": "2026-10-10",
@@ -157,7 +185,11 @@
       "C"
     ],
     "same_day_only": true,
-    "priority": 5
+    "priority": 5,
+    "reference_time_source_url": "https://www.12306.cn/index/view/infos/sale_time.html",
+    "reference_time_checked_at": "2026-10-10",
+    "reference_time_valid_from": "2000-01-01",
+    "reference_time_valid_to": "2099-12-31"
   },
   {
     "station_name": "深圳北",
@@ -165,7 +197,7 @@
     "pinyin": "shenzhenbei",
     "pinyin_abbr": "szb",
     "convenient_transfer_confirmed": true,
-    "reference_min_minutes": null,
+    "reference_min_minutes": 15,
     "source_url": "https://news.cnr.cn/native/city/20170213/t20170213_523591490.shtml",
     "source_published_at": "2017-02-13",
     "verified_at": "2026-10-10",
@@ -177,7 +209,11 @@
       "C"
     ],
     "same_day_only": true,
-    "priority": 7
+    "priority": 7,
+    "reference_time_source_url": "https://www.12306.cn/index/view/infos/sale_time.html",
+    "reference_time_checked_at": "2026-10-10",
+    "reference_time_valid_from": "2000-01-01",
+    "reference_time_valid_to": "2099-12-31"
   },
   {
     "station_name": "长春",
@@ -185,7 +221,7 @@
     "pinyin": "changchun",
     "pinyin_abbr": "cc",
     "convenient_transfer_confirmed": true,
-    "reference_min_minutes": null,
+    "reference_min_minutes": 15,
     "source_url": "https://ln.people.com.cn/n2/2026/0430/c378316-41569121-4.html",
     "source_published_at": "2026-04-30",
     "verified_at": "2026-10-10",
@@ -197,7 +233,11 @@
       "C"
     ],
     "same_day_only": true,
-    "priority": 10
+    "priority": 10,
+    "reference_time_source_url": "https://www.12306.cn/index/view/infos/sale_time.html",
+    "reference_time_checked_at": "2026-10-10",
+    "reference_time_valid_from": "2000-01-01",
+    "reference_time_valid_to": "2099-12-31"
   },
   {
     "station_name": "长春西",
@@ -205,7 +245,7 @@
     "pinyin": "changchunxi",
     "pinyin_abbr": "ccx",
     "convenient_transfer_confirmed": true,
-    "reference_min_minutes": null,
+    "reference_min_minutes": 15,
     "source_url": "https://ln.people.com.cn/n2/2026/0430/c378316-41569121-4.html",
     "source_published_at": "2026-04-30",
     "verified_at": "2026-10-10",
@@ -217,7 +257,11 @@
       "C"
     ],
     "same_day_only": true,
-    "priority": 11
+    "priority": 11,
+    "reference_time_source_url": "https://www.12306.cn/index/view/infos/sale_time.html",
+    "reference_time_checked_at": "2026-10-10",
+    "reference_time_valid_from": "2000-01-01",
+    "reference_time_valid_to": "2099-12-31"
   },
   {
     "station_name": "天津西",
@@ -225,7 +269,7 @@
     "pinyin": "tianjinxi",
     "pinyin_abbr": "tjx",
     "convenient_transfer_confirmed": true,
-    "reference_min_minutes": null,
+    "reference_min_minutes": 15,
     "source_url": "https://tj.people.com.cn/n2/2025/0114/c375366-41108065.html",
     "source_published_at": "2025-01-14",
     "verified_at": "2026-10-10",
@@ -237,6 +281,10 @@
       "C"
     ],
     "same_day_only": true,
-    "priority": 6
+    "priority": 6,
+    "reference_time_source_url": "https://www.12306.cn/index/view/infos/sale_time.html",
+    "reference_time_checked_at": "2026-10-10",
+    "reference_time_valid_from": "2000-01-01",
+    "reference_time_valid_to": "2099-12-31"
   }
 ]

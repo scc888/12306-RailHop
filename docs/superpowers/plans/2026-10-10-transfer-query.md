@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-10-transfer-query-design.md`
 
+**后续变更（2026-10-10）：**用户要求默认采用官方参考换乘时间。首版下列 15 分钟默认规则已由最新 spec 和验证说明中的按站官方时间规则替代；本计划保留首版执行历史。
+
 ## Global Constraints
 
 - 本版仅查询，展示车次、时刻、余票、席别和价格。

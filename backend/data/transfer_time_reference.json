@@ -1,0 +1,104 @@
+{
+  "source_url": "https://www.12306.cn/index/otn/index12306/queryLCtime",
+  "page_url": "https://www.12306.cn/index/view/infos/sale_time.html",
+  "queried_at": "2026-10-10T14:56:20.387772+08:00",
+  "query_date": "2026-10-11",
+  "records": [
+    {
+      "from_station_telecode": "NKH",
+      "to_station_telecode": "NKH",
+      "relay_time": 15,
+      "communication_code": "1",
+      "start_date": "20000101",
+      "stop_date": "20991231"
+    },
+    {
+      "from_station_telecode": "AOH",
+      "to_station_telecode": "AOH",
+      "relay_time": 15,
+      "communication_code": "1",
+      "start_date": "20000101",
+      "stop_date": "20991231"
+    },
+    {
+      "from_station_telecode": "SHH",
+      "to_station_telecode": "SHH",
+      "relay_time": 30,
+      "communication_code": "0",
+      "start_date": "20000101",
+      "stop_date": "20991231"
+    },
+    {
+      "from_station_telecode": "SNH",
+      "to_station_telecode": "SNH",
+      "relay_time": 15,
+      "communication_code": "1",
+      "start_date": "20000101",
+      "stop_date": "20991231"
+    },
+    {
+      "from_station_telecode": "HGH",
+      "to_station_telecode": "HGH",
+      "relay_time": 15,
+      "communication_code": "1",
+      "start_date": "20000101",
+      "stop_date": "20991231"
+    },
+    {
+      "from_station_telecode": "ZAF",
+      "to_station_telecode": "ZAF",
+      "relay_time": 60,
+      "communication_code": "1",
+      "start_date": "20000101",
+      "stop_date": "20991231"
+    },
+    {
+      "from_station_telecode": "WHN",
+      "to_station_telecode": "WHN",
+      "relay_time": 15,
+      "communication_code": "1",
+      "start_date": "20170916",
+      "stop_date": "20991231"
+    },
+    {
+      "from_station_telecode": "CWQ",
+      "to_station_telecode": "CWQ",
+      "relay_time": 15,
+      "communication_code": "1",
+      "start_date": "20000101",
+      "stop_date": "20991231"
+    },
+    {
+      "from_station_telecode": "IOQ",
+      "to_station_telecode": "IOQ",
+      "relay_time": 15,
+      "communication_code": "1",
+      "start_date": "20000101",
+      "stop_date": "20991231"
+    },
+    {
+      "from_station_telecode": "CCT",
+      "to_station_telecode": "CCT",
+      "relay_time": 15,
+      "communication_code": "1",
+      "start_date": "20000101",
+      "stop_date": "20991231"
+    },
+    {
+      "from_station_telecode": "CRT",
+      "to_station_telecode": "CRT",
+      "relay_time": 15,
+      "communication_code": "1",
+      "start_date": "20000101",
+      "stop_date": "20991231"
+    },
+    {
+      "from_station_telecode": "TXP",
+      "to_station_telecode": "TXP",
+      "relay_time": 15,
+      "communication_code": "1",
+      "start_date": "20000101",
+      "stop_date": "20991231"
+    }
+  ]
+}
