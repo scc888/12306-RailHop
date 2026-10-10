@@ -8,10 +8,10 @@ class StationTests(unittest.TestCase):
     def test_request_defaults_and_invalid_inputs(self):
         base = dict(from_station='SHH', to_station='BJP', train_date='2026-10-11')
         request = TransferQueryRequest(**base)
-        self.assertEqual((request.transfer_count, request.min_transfer_minutes, request.allowed_seats), (1, None, ['ze', 'zy']))
+        self.assertEqual((request.transfer_count, request.min_transfer_minutes, request.allowed_seats, request.train_type), (1, None, ['ze', 'zy','yz','yw','rw'], 'all'))
         self.assertIsNone(TransferQueryRequest(**base, min_transfer_minutes=None).min_transfer_minutes)
         for change in [dict(transfer_count=0), dict(transfer_count=4), dict(min_transfer_minutes=14),
-                       dict(allowed_seats=[]), dict(allowed_seats=['bad']),
+                       dict(allowed_seats=[]), dict(allowed_seats=['bad']), dict(train_type='bad'),
                        dict(ordered_via_stations=['NJH', 'NJH']), dict(ordered_via_stations=['NJH', 'HGH']),
                        dict(to_station='SHH')]:
             with self.subTest(change=change), self.assertRaises(ValidationError):

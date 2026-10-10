@@ -1,9 +1,23 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { calculateFare, sortPlans, formatMoney, buildTransferText, createTransferQueryController } from '../src/lib/transfer.js'
+import { calculateFare, sortPlans, formatMoney, buildTransferText, createTransferQueryController, matchesTrainType, defaultSeatCodes } from '../src/lib/transfer.js'
 
 const legs = [{train_code:'G1', from_station_name:'上海', to_station_name:'南京南', departure_at:'2026-10-10T23:00:00+08:00', arrival_at:'2026-10-11T00:00:00+08:00', seats:[{code:'ze', price_fen:12350}, {code:'zy', price_fen:20000}]},
               {train_code:'G2', from_station_name:'南京南', to_station_name:'北京', departure_at:'2026-10-11T00:15:00+08:00', arrival_at:'2026-10-11T04:00:00+08:00', seats:[{code:'ze',price_fen:20005}, {code:'zy',price_fen:null}]}]
+
+test('列车类型包含普速和纯数字车次，默认席别支持硬座卧铺',()=>{
+  for(const code of ['K1','T2','Z3','1461']) {
+    assert.equal(matchesTrainType(code,'all'),true)
+    assert.equal(matchesTrainType(code,'regular'),true)
+    assert.equal(matchesTrainType(code,'high_speed'),false)
+  }
+  for(const code of ['G1','D2','C3']) {
+    assert.equal(matchesTrainType(code,'regular'),false)
+    assert.equal(matchesTrainType(code,'high_speed'),true)
+  }
+  assert.deepEqual(defaultSeatCodes,['ze','zy','yz','yw','rw'])
+  assert.equal(defaultSeatCodes.includes('wz'),false)
+})
 
 test('分段席别改变后以整数分合计，缺价保持未知', () => {
   assert.deepEqual(calculateFare(legs,['ze','ze']), {totalPriceFen:32355,knownPriceFen:32355})

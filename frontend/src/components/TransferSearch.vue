@@ -19,7 +19,10 @@
             <input v-model="trainDate" type="date" :min="today" required class="transfer-input" />
           </label>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <label class="text-xs font-semibold text-slate-600">列车类型
+            <select v-model="trainType" aria-label="中转列车类型" class="transfer-input"><option value="all">全部列车（可混合中转）</option><option value="high_speed">仅高铁 / 动车（G/D/C）</option><option value="regular">仅普速（Z/T/K/其他）</option></select>
+          </label>
           <label class="text-xs font-semibold text-slate-600">中转站数量
             <select v-model.number="transferCount" class="transfer-input"><option v-for="n in 3" :key="n" :value="n">{{ n }} 个站 · {{ n + 1 }} 段车次</option></select>
           </label>
@@ -46,6 +49,7 @@
         </div>
         <fieldset><legend class="text-xs font-semibold text-slate-600 mb-2">可接受席别（各段可分别选择）</legend>
           <div class="flex flex-wrap gap-2"><label v-for="seat in seatOptions" :key="seat.code" class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs cursor-pointer" :class="allowedSeats.includes(seat.code) ? 'bg-blue-50 text-blue-800 border-blue-200' : 'bg-white text-slate-500 border-slate-200'"><input v-model="allowedSeats" type="checkbox" :value="seat.code" class="accent-blue-600" />{{ seat.name }}</label></div>
+          <p class="mt-2 text-xs text-slate-500">普速车请勾选硬座、硬卧或软卧等席别；每段仍须有你所选席别的现票。</p>
         </fieldset>
         <div class="flex flex-wrap justify-between items-center gap-4 border-t border-slate-100 pt-4">
           <p class="text-xs text-slate-500 max-w-xl leading-relaxed">默认使用 12306 各站参考时间；自定义时取个人设置与官方值中的较大值。参考数据为已采集快照，实际安排以车站为准。</p>
@@ -63,7 +67,7 @@
       <div v-else-if="result.meta.truncated || result.meta.failed_pairs.length" class="rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-sm p-4"><p class="font-semibold">以下是已查询范围内的推荐，结果可能不完整。</p><p class="text-xs mt-1">{{ truncationText }}<span v-if="result.meta.failed_pairs.length"> {{ result.meta.failed_pairs.length }} 个区间查询失败或数据异常。</span></p></div>
       <p v-if="!result.plans.length && result.meta.status !== 'upstream_error'" class="p-7 text-center bg-white rounded-2xl border border-slate-200 text-sm text-slate-500">本次搜索范围内未找到符合席别与换乘条件的路线，可尝试修改日期、指定站或中转次数。</p>
       <TransferPlanCard v-for="(plan,index) in sortedPlans" :key="plan.id" :plan="plan" :rank="index + 1" @seat-change="changeSeat" />
-      <details class="rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-500"><summary class="cursor-pointer font-semibold">查看本次查询范围与车站资料</summary><p class="mt-3 leading-relaxed">候选中转站：{{ candidateNames }}。首段按所选日期查询，后续行程最多 {{ result.meta.limits.horizon_hours }} 小时；最多查询 {{ result.meta.limits.max_queries }} 个日期区间、处理 {{ result.meta.limits.max_states }} 个搜索状态，展示前 {{ result.meta.limits.max_results }} 条路线。</p><p class="mt-2">余票为短期快照；便捷换乘资料不是通道实时开放状态。当前收录站按同日 G/D/C 列车换乘筛选，临时调整以车站公告为准。</p></details>
+      <details class="rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-500"><summary class="cursor-pointer font-semibold">查看本次查询范围与车站资料</summary><p class="mt-3 leading-relaxed">候选中转站：{{ candidateNames }}。首段按所选日期查询，后续行程最多 {{ result.meta.limits.horizon_hours }} 小时；最多查询 {{ result.meta.limits.max_queries }} 个日期区间、处理 {{ result.meta.limits.max_states }} 个搜索状态，展示前 {{ result.meta.limits.max_results }} 条路线。</p><p class="mt-2">余票为短期快照；便捷换乘资料不是通道实时开放状态。普速与高铁动车均按同站、官方参考时间及车站适用条件核对；当前资料限同日到发换乘，临时调整以车站公告为准。</p></details>
     </section>
   </div>
 </template>
@@ -71,8 +75,8 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import TransferPlanCard from './TransferPlanCard.vue'
-import { seatOptions, sortPlans, createTransferQueryController, formatDateTime } from '../lib/transfer.js'
-const props = defineProps({ initialFrom:String, initialTo:String, initialDate:String, initialSeats:Array })
+import { seatOptions, defaultSeatCodes, sortPlans, createTransferQueryController, formatDateTime } from '../lib/transfer.js'
+const props = defineProps({ initialFrom:String, initialTo:String, initialDate:String, initialSeats:Array, initialTrainType:String })
 const today = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())
 const fromText = ref(props.initialFrom || '')
 const toText = ref(props.initialTo || '')
@@ -81,7 +85,8 @@ const transferCount = ref(1)
 const minMinutes = ref(15)
 const useOfficialTime = ref(true)
 const viaTexts = ref([''])
-const allowedSeats = ref(props.initialSeats?.length ? [...props.initialSeats] : ['ze','zy'])
+const allowedSeats = ref(props.initialSeats?.length ? [...props.initialSeats] : [...defaultSeatCodes])
+const trainType = ref(props.initialTrainType || 'all')
 const sortBy = ref('duration')
 const stations = ref([])
 const fromSuggestions = ref([])
@@ -99,7 +104,7 @@ const sortedPlans = computed(() => sortPlans(result.value?.plans || [],sortBy.va
 const truncationText = computed(() => (result.value?.meta.truncation_reasons || []).map(r=>reasons[r] || r).join('；'))
 const candidateNames = computed(() => (result.value?.meta.candidate_station_codes || []).map(c=>stations.value.find(s=>s.station_code===c)?.station_name || c).join('、'))
 function invalidate() { requestId++; controller.cancel(); loading.value=false; result.value=null; error.value=''; queryNotice.value='' }
-watch([fromText,toText,trainDate,transferCount,minMinutes,useOfficialTime,viaTexts,allowedSeats],invalidate,{deep:true,flush:'sync'})
+watch([fromText,toText,trainDate,transferCount,minMinutes,useOfficialTime,viaTexts,allowedSeats,trainType],invalidate,{deep:true,flush:'sync'})
 watch(sortBy,()=>{
   const needsQuery = !!result.value || loading.value
   invalidate()
@@ -141,7 +146,7 @@ async function search() {
       if(!s) throw new Error(`“${word}”尚无可用的便捷换乘资料，请从已收录站中选择`)
       return s.station_code
     })
-    const data=await controller.search({train_date:trainDate.value,transfer_count:transferCount.value,min_transfer_minutes:useOfficialTime.value ? null : minMinutes.value,ordered_via_stations:via,allowed_seats:[...allowedSeats.value],sort_by:sortBy.value}, async(request,signal)=>{
+    const data=await controller.search({train_date:trainDate.value,train_type:trainType.value,transfer_count:transferCount.value,min_transfer_minutes:useOfficialTime.value ? null : minMinutes.value,ordered_via_stations:via,allowed_seats:[...allowedSeats.value],sort_by:sortBy.value}, async(request,signal)=>{
       const [from,to]=await Promise.all([resolveStation(fromText.value,signal),resolveStation(toText.value,signal)])
       return {...request,from_station:from,to_station:to}
     })

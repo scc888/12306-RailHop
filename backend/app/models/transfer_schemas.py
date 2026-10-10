@@ -15,7 +15,8 @@ class TransferQueryRequest(BaseModel):
     # None selects each station's official reference; an explicit value is a personal floor.
     min_transfer_minutes: int | None = Field(None, ge=15, le=1440)
     ordered_via_stations: list[str] = Field(default_factory=list)
-    allowed_seats: list[str] = Field(default_factory=lambda: ['ze', 'zy'])
+    allowed_seats: list[str] = Field(default_factory=lambda: ['ze', 'zy', 'yz', 'yw', 'rw'])
+    train_type: Literal['all', 'high_speed', 'regular'] = 'all'
     sort_by: Literal['duration', 'arrival', 'price'] = 'duration'
 
     @model_validator(mode='after')

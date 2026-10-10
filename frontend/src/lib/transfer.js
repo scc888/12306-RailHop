@@ -3,6 +3,13 @@ export const seatOptions = [
   ['rw', '软卧'], ['srrb', '动卧'], ['yz', '硬座'], ['rz', '软座'], ['gr', '高级软卧'], ['wz', '无座']
 ].map(([code, name]) => ({ code, name }))
 
+export const defaultSeatCodes = ['ze','zy','yz','yw','rw']
+
+export function matchesTrainType(trainCode, type = 'all') {
+  const highSpeed = /^[GDC]/i.test(trainCode)
+  return type === 'all' || (type === 'high_speed' ? highSpeed : !highSpeed)
+}
+
 export function calculateFare(legs, selectedCodes) {
   let knownPriceFen = 0
   let complete = true

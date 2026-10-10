@@ -199,6 +199,23 @@ class PlannerTests(unittest.TestCase):
         result,_=self.search(overnight,stations=[future])
         self.assertEqual(result.plans,[])
 
+    def test_regular_and_mixed_train_types_with_allowed_seats(self):
+        ordinary_seat=[TransferSeat(code='yw',name='硬卧',availability='有',price_fen=15000)]
+        legs=[leg('AAA','BBB','2026-10-10T08:00','2026-10-10T09:00','K1',seats=ordinary_seat),
+              leg('BBB','ZZZ','2026-10-10T09:15','2026-10-10T12:00','Z2',seats=ordinary_seat)]
+        for selected,expected in [('all',1),('regular',1),('high_speed',0)]:
+            result,_=self.search(legs,train_type=selected)
+            self.assertEqual(len(result.plans),expected)
+        legs[1]=leg('BBB','ZZZ','2026-10-10T09:15','2026-10-10T12:00','G2')
+        result,_=self.search(legs,train_type='all')
+        self.assertEqual(len(result.plans),1)
+        result,_=self.search(legs,train_type='regular')
+        self.assertEqual(result.plans,[])
+        result,_=self.search(legs,stations=[station('BBB',allowed_train_prefixes=['G','D','C'])])
+        self.assertEqual(result.plans,[])
+        catalog=TransferStationService()
+        self.assertEqual(catalog.validate_via(['SHH'])[0].allowed_train_prefixes,[])
+
 
 if __name__ == '__main__':
     unittest.main()

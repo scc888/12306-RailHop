@@ -53,7 +53,7 @@
         <button type="button" @click="queryMode = 'direct'" :aria-pressed="queryMode === 'direct'" class="rounded-lg px-5 py-2 text-sm font-semibold cursor-pointer" :class="queryMode === 'direct' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'">直达查询</button>
         <button type="button" @click="queryMode = 'transfer'" :aria-pressed="queryMode === 'transfer'" class="rounded-lg px-5 py-2 text-sm font-semibold cursor-pointer" :class="queryMode === 'transfer' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'">中转查询</button>
       </nav>
-      <TransferSearch v-if="queryMode === 'transfer'" :initial-from="fromStation" :initial-to="toStation" :initial-date="trainDate" :initial-seats="selectedSeatCodes" />
+      <TransferSearch v-if="queryMode === 'transfer'" :initial-from="fromStation" :initial-to="toStation" :initial-date="trainDate" :initial-seats="selectedSeatCodes" :initial-train-type="filterTrainType" />
       <div v-show="queryMode === 'direct'" class="space-y-6">
       <!-- 查询输入卡片 -->
       <section class="bg-white rounded-2xl p-5 shadow-xs border border-slate-200/80">
@@ -203,8 +203,8 @@
 
           <div class="flex items-center space-x-4">
             <label class="inline-flex items-center space-x-1.5 cursor-pointer text-slate-600 select-none">
-              <input type="checkbox" v-model="filterHighSpeedOnly" class="rounded text-blue-600 focus:ring-blue-500" />
-              <span>仅看高铁/动车 (G/D/C)</span>
+              <span>列车类型</span>
+              <select v-model="filterTrainType" aria-label="直达列车类型" class="rounded border border-slate-200 bg-white px-2 py-1"><option value="all">全部列车</option><option value="high_speed">仅高铁 / 动车（G/D/C）</option><option value="regular">仅普速（Z/T/K/其他）</option></select>
             </label>
             <label class="inline-flex items-center space-x-1.5 cursor-pointer text-slate-600 select-none">
               <input type="checkbox" v-model="filterHasTicketOnly" class="rounded text-blue-600 focus:ring-blue-500" />
@@ -544,6 +544,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import TransferSearch from './components/TransferSearch.vue'
+import { defaultSeatCodes, matchesTrainType } from './lib/transfer.js'
 
 const queryMode = ref('direct')
 import {
@@ -601,7 +602,7 @@ const isLoading = ref(false)
 const queried = ref(false)
 const trainResults = ref([])
 
-const filterHighSpeedOnly = ref(true)
+const filterTrainType = ref('all')
 const filterHasTicketOnly = ref(false)
 
 // 用户偏好: 允许席别 & 最多车内换座次数 (默认2次)
@@ -615,7 +616,7 @@ const availableSeatOptions = [
   { code: 'yz', name: '硬座' },
   { code: 'wz', name: '无座' }
 ]
-const selectedSeatCodes = ref(['ze', 'zy'])
+const selectedSeatCodes = ref([...defaultSeatCodes])
 const selectedMaxTickets = ref(2)
 
 function toggleSeatOption(code) {
@@ -769,12 +770,7 @@ async function doQueryTickets() {
 // 过滤列表
 const filteredTrains = computed(() => {
   return trainResults.value.filter(t => {
-    if (filterHighSpeedOnly.value) {
-      const code = t.train_code.toUpperCase()
-      if (!code.startsWith('G') && !code.startsWith('D') && !code.startsWith('C')) {
-        return false
-      }
-    }
+    if (!matchesTrainType(t.train_code,filterTrainType.value)) return false
     if (filterHasTicketOnly.value && !t.seats.has_any_ticket) {
       return false
     }
@@ -786,7 +782,7 @@ const countDirectAvailable = computed(() => {
   return filteredTrains.value.filter(t => t.seats.has_any_ticket).length
 })
 
-const hasPreferredDirectTicket = computed(() => trainResults.value.some(train => train.can_buy && selectedSeatCodes.value.some(code => {
+const hasPreferredDirectTicket = computed(() => trainResults.value.some(train => matchesTrainType(train.train_code,filterTrainType.value) && train.can_buy && selectedSeatCodes.value.some(code => {
   const value = train.seats[code]
   return value === '有' || (typeof value === 'string' && /^\d+$/.test(value) && Number(value) > 0)
 })))

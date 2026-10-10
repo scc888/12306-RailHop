@@ -97,6 +97,50 @@ class TransferApiTests(unittest.TestCase):
         finally:
             app.dependency_overrides.clear()
 
+    def test_regular_trains_through_api_and_real_gateway(self):
+        from app.api.transfer_routes import get_transfer_planner
+
+        def sample(a, b, start, arrive, duration, train):
+            parts = row(start, arrive, duration, dest=b).split('|')
+            parts[2:8] = [train, train, a, b, a, b]
+            parts[30] = '--'
+            parts[28] = '有'
+            parts[39] = '3015000000'  # Hard sleeper, 150 yuan.
+            return '|'.join(parts)
+
+        responses = {
+            ('2026-10-10', 'BJP', 'SHH'): [sample('BJP','SHH','08:00','09:00','01:00','K1')],
+            ('2026-10-10', 'SHH', 'HGH'): [sample('SHH','HGH','09:30','12:00','02:30','Z2')],
+        }
+
+        def network(url, params, **kwargs):
+            key = tuple(params[f'leftTicketDTO.{name}'] for name in ('train_date','from_station','to_station'))
+            return railway_response({'status': True, 'data': {'result': responses.get(key, []), 'map': {}}})
+
+        railway = Ticket12306Client()
+        planner = TransferPlanner(TransferStationService(), TransferTicketGateway(client=railway), sleep_fn=lambda s: None)
+        original = planner.search
+        planner.search = lambda request: original(request, now=NOW)
+        app.dependency_overrides[get_transfer_planner] = lambda: planner
+        body = self.body | dict(from_station='BJP', to_station='HGH', ordered_via_stations=['SHH'])
+        try:
+            with patch.object(railway, 'ensure_init'), patch.object(railway.session, 'get', side_effect=network):
+                for train_type in ['all', 'regular']:
+                    result = self.client.post('/api/transfers/query', json=body | dict(train_type=train_type))
+                    self.assertEqual(result.status_code, 200)
+                    plans = result.json()['data']['plans']
+                    self.assertEqual(len(plans), 1)
+                    self.assertEqual([item['train_code'] for item in plans[0]['legs']], ['K1','Z2'])
+                    self.assertEqual(plans[0]['selected_seat_codes'], ['yw','yw'])
+                    self.assertEqual(plans[0]['total_price_fen'], 30000)
+                    self.assertEqual(plans[0]['connections'][0]['required_minutes'], 30)
+                for criteria in [dict(train_type='high_speed'), dict(allowed_seats=['ze','zy'])]:
+                    result = self.client.post('/api/transfers/query', json=body | criteria)
+                    self.assertEqual(result.status_code, 200)
+                    self.assertEqual(result.json()['data']['plans'], [])
+        finally:
+            app.dependency_overrides.clear()
+
     def test_legacy_query_contract_and_no_transactions(self):
         with patch('app.api.routes.client_12306.query_tickets', return_value=[]):
             response = self.client.get('/api/tickets/query?train_date=2026-10-10&from_station=上海&to_station=北京')

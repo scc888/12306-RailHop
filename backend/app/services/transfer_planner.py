@@ -156,6 +156,11 @@ class TransferPlanner:
                             if expired():
                                 exhausted = True
                                 break
+                            high_speed = item.train_code[:1].upper() in ('G','D','C')
+                            if request.train_type == 'high_speed' and not high_speed:
+                                continue
+                            if request.train_type == 'regular' and high_speed:
+                                continue
                             if (item.from_station, item.to_station) != (start, target):
                                 continue
                             if item.departure_at.date() != day or item.departure_at < earliest:
