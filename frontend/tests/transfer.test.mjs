@@ -31,13 +31,13 @@ test('晚返回的旧请求和已取消请求均不能覆盖新结果', async ()
   const controller=createTransferQueryController(() => new Promise(resolve=>pending.push(resolve)))
   const a=controller.search({from_station:'SHH'})
   const b=controller.search({from_station:'BJP'})
-  pending[1]({ok:true,json:async()=>({code:200,data:{plans:['B']}})})
-  assert.deepEqual(await b,{plans:['B']})
-  pending[0]({ok:true,json:async()=>({code:200,data:{plans:['A']}})})
+  pending[1]({ok:true,json:async()=>({code:200,data:{plans:['B'],meta:{}}})})
+  assert.deepEqual(await b,{plans:['B'],meta:{}})
+  pending[0]({ok:true,json:async()=>({code:200,data:{plans:['A'],meta:{}}})})
   assert.equal(await a,null)
   const c=controller.search({})
   controller.cancel()
-  pending[2]({ok:true,json:async()=>({code:200,data:{plans:['C']}})})
+  pending[2]({ok:true,json:async()=>({code:200,data:{plans:['C'],meta:{}}})})
   assert.equal(await c,null)
 })
 
@@ -46,4 +46,14 @@ test('非JSON和繁忙错误显示可理解的信息',async()=>{
   await assert.rejects(nonJson.search({}),/服务暂不可用/)
   const busy=createTransferQueryController(async()=>({ok:false,status:429,json:async()=>({detail:'当前有中转查询正在进行，请稍后重试'})}))
   await assert.rejects(busy.search({}),/请稍后重试/)
+})
+
+test('缺少查询元信息的响应应明确报错而非进入页面',async()=>{
+  const controller=createTransferQueryController(async()=>({ok:true,json:async()=>({code:200,data:{plans:[]}})}))
+  await assert.rejects(controller.search({}),/响应格式异常/)
+})
+
+test('请求超过时限时退出加载并给出超时原因',async()=>{
+  const controller=createTransferQueryController(()=>new Promise(()=>{}),5)
+  await assert.rejects(controller.search({}),/查询超时/)
 })

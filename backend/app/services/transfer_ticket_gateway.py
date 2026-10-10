@@ -34,7 +34,8 @@ class TransferTicketGateway:
         result = []
         for ticket in tickets:
             if (ticket.from_station_telecode, ticket.to_station_telecode) != (from_code, to_code):
-                self.last_issues.append('上游返回的站点与查询区间不一致')
+                # Official queries may include other stations in the same city.
+                # Excluding those is normal filtering, not an upstream failure.
                 continue
             if not ticket.can_buy:
                 continue

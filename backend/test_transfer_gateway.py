@@ -54,6 +54,12 @@ class GatewayTests(unittest.TestCase):
         gateway = TransferTicketGateway(client=self.client(railway_response({'status': True, 'data': {'result': rows, 'map': {}}})))
         self.assertEqual(len(gateway.query(date(2026, 10, 10), 'SHH', 'BJP', ['ze'], 5)), 2)
 
+    def test_extra_city_stations_are_filtered_without_marking_query_failed(self):
+        gateway = TransferTicketGateway(client=self.client(railway_response({'status': True, 'data': {
+            'result': [row(), row(dest='VNP')], 'map': {}}})))
+        self.assertEqual(len(gateway.query(date(2026,10,10),'SHH','BJP',['ze'],5)),1)
+        self.assertEqual(gateway.last_issues, [])
+
     def test_money_is_integer_fen_and_missing_not_zero(self):
         self.assertEqual(parse_price_fen('¥123.5'), 12350)
         self.assertEqual(parse_price_fen('¥200.05'), 20005)
