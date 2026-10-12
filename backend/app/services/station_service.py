@@ -85,7 +85,9 @@ class StationService:
                     name=name,
                     telecode=telecode,
                     pinyin=pinyin,
-                    pinyin_abbr=pinyin_abbr
+                    pinyin_abbr=pinyin_abbr,
+                    city_code=(parts[6].strip() or None) if len(parts) > 7 else None,
+                    city_name=(parts[7].strip() or None) if len(parts) > 7 else None,
                 )
                 stations_list.append(info)
                 name_to_code[name] = telecode
@@ -112,9 +114,9 @@ class StationService:
         fuzzy_matches = []
 
         for s in self.stations:
-            if s.name == kw or s.pinyin == kw or s.pinyin_abbr == kw:
+            if s.name == kw or s.pinyin == kw or s.pinyin_abbr == kw or s.telecode.lower() == kw or s.city_name == kw:
                 exact_matches.append(s)
-            elif s.name.startswith(kw) or s.pinyin.startswith(kw) or s.pinyin_abbr.startswith(kw):
+            elif s.name.startswith(kw) or s.pinyin.startswith(kw) or s.pinyin_abbr.startswith(kw) or (s.city_name or '').startswith(kw):
                 prefix_matches.append(s)
             elif kw in s.name or kw in s.pinyin or kw in s.pinyin_abbr:
                 fuzzy_matches.append(s)
@@ -134,6 +136,19 @@ class StationService:
     def get_code(self, name: str) -> Optional[str]:
         self.ensure_loaded()
         return self.name_to_code.get(name)
+
+    def city_stations(self, anchor_code: str) -> List[StationInfo]:
+        """Use the official dictionary city ID, never a station-name prefix guess.
+
+        Older dictionary entries without city metadata remain station-only.
+        """
+        self.ensure_loaded()
+        anchor = next((s for s in self.stations if s.telecode == anchor_code), None)
+        if anchor is None:
+            return []
+        if not anchor.city_code:
+            return [anchor]
+        return [s for s in self.stations if s.city_code == anchor.city_code]
 
     def get_name(self, code: str) -> Optional[str]:
         self.ensure_loaded()

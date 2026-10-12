@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+.journey-secondary { min-height: 44px; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 16px; font-size: 14px; font-weight: 600; color: #1d4ed8; background: white; cursor: pointer; }
+
 :root {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif;
   font-synthesis: none;
@@ -13,6 +15,50 @@ html, body, #app {
   min-height: 100%;
   margin: 0;
   padding: 0;
+}
+
+button, select, summary { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+.journey-card { border: 1px solid #e2e8f0; border-radius: 18px; background: white; box-shadow: 0 2px 4px #0f172a04; overflow: hidden; }
+.journey-label { display: block; font-size: 12px; font-weight: 600; color: #475569; }
+.journey-input { display: block; width: 100%; min-width: 0; min-height: 44px; margin-top: 7px; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; color: #0f172a; font-size: 14px; font-weight: 400; }
+.journey-input:focus { border-color: #2563eb; }
+.journey-primary { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 8px; padding: 12px 18px; border-radius: 11px; background: #2563eb; color: white; font-size: 14px; font-weight: 600; }
+.journey-primary:hover { background: #1d4ed8; }
+.journey-primary:disabled { opacity: .6; }
+.search-main-grid { display: grid; grid-template-columns: minmax(0,1fr) 32px minmax(0,1fr); gap: 14px 8px; align-items: start; }
+.search-main-grid > :nth-child(4) { grid-column: 1 / -1; }
+.query-button { grid-column: 1 / -1; }
+.swap-button { display: flex; justify-content: center; align-items: center; margin-top: 24px; height: 44px; border-radius: 9px; background: #f1f5f9; color: #475569; }
+.scope-control { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 7px; font-size: 11px; color: #64748b; }
+.scope-control select { max-width: 100%; min-height: 28px; background: transparent; color: #1d4ed8; }
+.seat-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; border: 1px solid #e2e8f0; border-radius: 9px; padding: 6px 10px; font-size: 12px; color: #475569; }
+.seat-selected { border-color: #bfdbfe; background: #eff6ff; color: #1e40af; }
+.advanced-settings { padding: 15px; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; }
+.advanced-settings > summary::after { content: '+'; color: #2563eb; margin-left: 10px; }
+.advanced-settings[open] > summary::after { content: '−'; }
+.notice-box { padding: 13px 16px; border-width: 1px; border-style: solid; border-radius: 12px; font-size: 14px; line-height: 1.7; }
+.result-tab { display: inline-flex; gap: 8px; align-items: center; min-height: 42px; border: 1px solid #e2e8f0; border-radius: 10px; background: white; padding: 8px 13px; font-size: 13px; color: #475569; }
+.result-tab span { font-size: 11px; opacity: .8; }
+.tab-active { border-color: #2563eb; background: #2563eb; color: white; }
+.kind-badge { display: inline-flex; border-radius: 999px; padding: 5px 10px; font-size: 11px; font-weight: 600; }
+.kind-direct { background: #eff6ff; color: #1d4ed8; }
+.kind-same_train { background: #f0fdfa; color: #115e59; }
+.kind-transfer { background: #eef2ff; color: #3730a3; }
+.plan-heading { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; padding: 20px; border-bottom: 1px solid #f1f5f9; background: #f8fafc80; }
+.plan-totals { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 24px; }
+.plan-leg { display: grid; grid-template-columns: 64px minmax(0,1fr); gap: 14px 8px; align-items: center; }
+.plan-leg > label { grid-column: 1 / -1; }
+@media (min-width: 640px) {
+  .plan-totals { width: auto; }
+  .plan-leg { grid-template-columns: 70px minmax(0,1fr) minmax(180px,.7fr); gap: 16px; }
+  .plan-leg > label { grid-column: auto; }
+}
+@media (min-width: 900px) {
+  .search-main-grid { grid-template-columns: minmax(0,1fr) 36px minmax(0,1fr) minmax(155px,.85fr) 166px; gap: 12px; }
+  .search-main-grid > :nth-child(4) { grid-column: auto; }
+  .query-button { grid-column: auto; margin-top: 25px; }
 }
 
 /* 自定义轻量滚动条 */

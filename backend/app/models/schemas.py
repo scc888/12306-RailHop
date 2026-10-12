@@ -2,7 +2,9 @@
 数据模型与响应架构定义
 """
 from typing import List, Optional, Dict, Any, Generic, TypeVar
+from datetime import datetime
 from pydantic import BaseModel, Field
+from .transfer_schemas import TransferSeat
 
 T = TypeVar("T")
 
@@ -17,6 +19,8 @@ class StationInfo(BaseModel):
     telecode: str = Field(..., description="电报码, 如 'SHH'")
     pinyin: str = Field(..., description="全拼, 如 'shanghai'")
     pinyin_abbr: str = Field(..., description="拼音缩写, 如 'sh'")
+    city_code: Optional[str] = Field(None, description="12306 车站字典中的所属城市代码")
+    city_name: Optional[str] = Field(None, description="12306 车站字典中的所属城市名称")
 
 
 class TrainSeatInfo(BaseModel):
@@ -64,25 +68,34 @@ class PlanSegment(BaseModel):
     to_station: str = Field(..., description="本段到达站")
     from_station_telecode: str = Field("", description="出发站电报码")
     to_station_telecode: str = Field("", description="到达站电报码")
+    train_code: str = Field("", description="本段显示车次，贯通运行时可能变化")
+    seat_code: str = Field("", description="当前选择的席别代码")
+    seats: List[TransferSeat] = Field(default_factory=list, description="本段符合偏好且有票的席别")
+    departure_at: Optional[datetime] = Field(None, description="含日期的本段发车时间")
+    arrival_at: Optional[datetime] = Field(None, description="含日期的本段到达时间")
+    price_fen: Optional[int] = Field(None, description="当前席别票价，单位分，未知为null")
     start_time: Optional[str] = Field(None, description="发车时间")
     arrive_time: Optional[str] = Field(None, description="到达时间")
-    seat_name: str = Field(..., description="席别名称, 如 '二等座' 或 '车上补票(无座)'")
-    seat_status: str = Field(..., description="余票状态, 如 '有票' 或 '待上车办理'")
+    seat_name: str = Field(..., description="席别名称")
+    seat_status: str = Field(..., description="余票状态")
     seat_price: str = Field("", description="本段票价, 如 '¥153'")
     is_extension: bool = Field(False, description="是否为上车补票区间")
     tip: str = Field("", description="乘车贴士")
 
 
 class SmartPlan(BaseModel):
-    plan_type: int = Field(..., description="方案类型: 1-买短补长, 2-同车换座, 3-买长乘短")
+    plan_type: int = Field(..., description="方案类型: 2-全程有票的同车接续")
     plan_type_name: str = Field(..., description="类型名称")
     train_code: str = Field(..., description="车次号, 如 G28")
     train_no: str = Field(..., description="车次内部编码")
     title: str = Field(..., description="方案摘要说明")
-    ticket_count: int = Field(1, description="到达终点站需购买车票张数(分段数): 1-买1张票, 2-买2张票, 3-最多买3张票")
-    transfer_count: int = Field(0, description="车内换座次数: 0-无需换座, 1-换座1次, 2-换座2次")
+    ticket_count: int = Field(1, description="覆盖全程的分段票数量")
+    transfer_count: int = Field(0, description="车内接续次数")
     segments: List[PlanSegment] = Field(default_factory=list, description="乘车分段列表")
     recommendation_score: int = Field(80, description="推荐指数 (0-100)")
     risk_level: int = Field(0, description="风险等级: 0-无风险, 1-低风险, 2-中风险")
     risk_notice: str = Field("", description="操作指导与风险说明")
+    total_price_fen: Optional[int] = Field(None, description="所选席别合计，未知为null")
+    known_price_fen: int = Field(0, description="已知部分票价合计，单位分")
+    total_minutes: int = Field(0, description="全程历时，包含停站，单位分钟")
 

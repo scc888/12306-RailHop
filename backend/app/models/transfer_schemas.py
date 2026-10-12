@@ -10,6 +10,8 @@ SEAT_NAMES = {'ze': '二等座', 'zy': '一等座', 'swz': '商务座', 'gr': '�
 class TransferQueryRequest(BaseModel):
     from_station: str = Field(pattern=r'^[A-Z]{3}$')
     to_station: str = Field(pattern=r'^[A-Z]{3}$')
+    from_scope: Literal['station', 'city'] = 'station'
+    to_scope: Literal['station', 'city'] = 'station'
     train_date: date
     transfer_count: int = Field(1, ge=1, le=3)
     # None selects each station's official reference; an explicit value is a personal floor.
@@ -18,6 +20,7 @@ class TransferQueryRequest(BaseModel):
     allowed_seats: list[str] = Field(default_factory=lambda: ['ze', 'zy', 'yz', 'yw', 'rw'])
     train_type: Literal['all', 'high_speed', 'regular'] = 'all'
     sort_by: Literal['duration', 'arrival', 'price'] = 'duration'
+    allow_large_detour: bool = False
 
     @model_validator(mode='after')
     def validate_route(self):
@@ -100,11 +103,17 @@ class TransferPlan(BaseModel):
     selected_seat_codes: list[str]
     total_price_fen: int | None
     known_price_fen: int
+    route_assessment: dict = Field(default_factory=dict)
 
 
 class TransferSearchMeta(BaseModel):
     queried_at: datetime
     candidate_station_codes: list[str]
+    from_scope: Literal['station', 'city'] = 'station'
+    to_scope: Literal['station', 'city'] = 'station'
+    origin_station_codes: list[str] = Field(default_factory=list)
+    destination_station_codes: list[str] = Field(default_factory=list)
+    coverage_notes: list[str] = Field(default_factory=list)
     query_count: int = 0
     failed_pairs: list[dict] = Field(default_factory=list)
     truncated: bool = False

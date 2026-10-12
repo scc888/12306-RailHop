@@ -4,6 +4,8 @@ FastAPI HTTP 端点端到端自动化测试
 import sys
 import os
 import unittest
+from datetime import datetime, timedelta
+from app.services.transfer_ticket_gateway import CST
 from fastapi.testclient import TestClient
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -18,6 +20,7 @@ class TestFastApiEndpoints(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = TestClient(app)
+        cls.train_date = (datetime.now(CST) + timedelta(days=1)).date().isoformat()
 
     def test_01_root_and_health(self):
         print("\n--- [测试 API: 根路径与健康检查] ---")
@@ -42,7 +45,7 @@ class TestFastApiEndpoints(unittest.TestCase):
 
     def test_03_ticket_query_api(self):
         print("\n--- [测试 API: 直达余票查询] ---")
-        res = self.client.get("/api/tickets/query?train_date=2026-10-10&from_station=上海&to_station=北京")
+        res = self.client.get(f"/api/tickets/query?train_date={self.train_date}&from_station=上海&to_station=北京")
         self.assertEqual(res.status_code, 200)
         data = res.json()["data"]
         self.assertIsInstance(data, list)
@@ -54,17 +57,18 @@ class TestFastApiEndpoints(unittest.TestCase):
     def test_04_smart_plans_api(self):
         print("\n--- [测试 API: 智能推算方案] ---")
         # 查上海到北京
-        query_res = self.client.get("/api/tickets/query?train_date=2026-10-10&from_station=上海&to_station=北京")
+        query_res = self.client.get(f"/api/tickets/query?train_date={self.train_date}&from_station=上海&to_station=北京")
         trains = query_res.json()["data"]
+        self.assertTrue(trains, '实时查询未取得候选列车，无法验证同车接口')
         target = trains[0]
         
         plan_url = (
             f"/api/smart-plans/calculate?"
-            f"train_date=2026-10-10&"
+            f"train_date={self.train_date}&"
             f"train_code={target['train_code']}&"
             f"train_no={target['train_no']}&"
-            f"from_station=上海&"
-            f"to_station=北京"
+            f"from_station={target['from_station_telecode']}&"
+            f"to_station={target['to_station_telecode']}"
         )
         res = self.client.get(plan_url)
         self.assertEqual(res.status_code, 200)

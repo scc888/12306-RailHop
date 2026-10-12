@@ -4,14 +4,19 @@
 import sys
 import os
 import unittest
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.services.station_service import station_service
 from app.services.client_12306 import client_12306
 from app.services.smart_planner import smart_planner
+from app.services.transfer_ticket_gateway import CST
 
 class TestBackendLogic(unittest.TestCase):
+
+    def setUp(self):
+        self.train_date = (datetime.now(CST) + timedelta(days=1)).date().isoformat()
 
     def test_01_station_service(self):
         print("\n--- [测试 1: 车站字典检索] ---")
@@ -31,7 +36,7 @@ class TestBackendLogic(unittest.TestCase):
 
     def test_02_direct_ticket_query(self):
         print("\n--- [测试 2: 真实 12306 直达余票查询] ---")
-        train_date = "2026-10-10"
+        train_date = self.train_date
         from_code = "SHH"
         to_code = "BJP"
         
@@ -46,7 +51,7 @@ class TestBackendLogic(unittest.TestCase):
 
     def test_03_query_stops(self):
         print("\n--- [测试 3: 车次沿途经停站时刻表查询] ---")
-        train_date = "2026-10-10"
+        train_date = self.train_date
         from_code = "SHH"
         to_code = "BJP"
         
@@ -56,8 +61,8 @@ class TestBackendLogic(unittest.TestCase):
         target_train = tickets[0]
         stops = client_12306.query_train_stops(
             target_train.train_no,
-            from_code,
-            to_code,
+            target_train.from_station_telecode,
+            target_train.to_station_telecode,
             train_date
         )
         self.assertGreater(len(stops), 1, "经停站列表为空或小于2站")
@@ -66,12 +71,13 @@ class TestBackendLogic(unittest.TestCase):
             print(f"  [{s.station_no}] {s.station_name} | 到: {s.arrive_time} | 开: {s.start_time} | 停: {s.stopover_time}")
 
     def test_04_smart_planner(self):
-        print("\n--- [测试 4: 【买短补长】与【同车换座】推算算法] ---")
-        train_date = "2026-10-10"
+        print("\n--- [测试 4: 全程有票的同车接续算法] ---")
+        train_date = self.train_date
         from_code = "SHH"
         to_code = "BJP"
         
         tickets = client_12306.query_tickets(train_date, from_code, to_code)
+        self.assertTrue(tickets, '实时查询未取得候选列车，无法验证同车规划')
         # 挑选一趟有经停站的列车 (如 G28 或首趟车)
         selected_train = next((t for t in tickets if "G" in t.train_code), tickets[0])
         print(f"对车次 {selected_train.train_code} ({selected_train.train_no}) 执行智能方案推算...")
@@ -80,8 +86,8 @@ class TestBackendLogic(unittest.TestCase):
             train_date=train_date,
             train_code=selected_train.train_code,
             train_no=selected_train.train_no,
-            from_code=from_code,
-            to_code=to_code
+            from_code=selected_train.from_station_telecode,
+            to_code=selected_train.to_station_telecode
         )
         
         print(f"成功生成 {len(plans)} 个智能出行备选方案！")

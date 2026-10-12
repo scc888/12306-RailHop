@@ -23,7 +23,7 @@ class TransferApiTests(unittest.TestCase):
                            leg('NKH','BJP','2026-10-10T09:15','2026-10-10T12:00','G2', 20005)])
         planner = TransferPlanner(TransferStationService(), samples, sleep_fn=lambda s: None)
         original = planner.search
-        planner.search = lambda request: original(request, now=NOW)
+        planner.search = lambda request, **kwargs: original(request, now=NOW, **kwargs)
         from app.api.transfer_routes import get_transfer_planner
         app.dependency_overrides[get_transfer_planner] = lambda: planner
         try:
@@ -72,7 +72,7 @@ class TransferApiTests(unittest.TestCase):
         railway = Ticket12306Client()
         planner = TransferPlanner(TransferStationService(), TransferTicketGateway(client=railway), sleep_fn=lambda s: None)
         original = planner.search
-        planner.search = lambda request: original(request, now=NOW)
+        planner.search = lambda request, **kwargs: original(request, now=NOW, **kwargs)
         app.dependency_overrides[get_transfer_planner] = lambda: planner
         try:
             with patch.object(railway, 'ensure_init'), patch.object(railway.session, 'get', side_effect=network):
@@ -120,7 +120,7 @@ class TransferApiTests(unittest.TestCase):
         railway = Ticket12306Client()
         planner = TransferPlanner(TransferStationService(), TransferTicketGateway(client=railway), sleep_fn=lambda s: None)
         original = planner.search
-        planner.search = lambda request: original(request, now=NOW)
+        planner.search = lambda request, **kwargs: original(request, now=NOW, **kwargs)
         app.dependency_overrides[get_transfer_planner] = lambda: planner
         body = self.body | dict(from_station='BJP', to_station='HGH', ordered_via_stations=['SHH'])
         try:

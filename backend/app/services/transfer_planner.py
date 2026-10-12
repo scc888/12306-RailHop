@@ -7,6 +7,7 @@ from ..config import settings
 from ..models.transfer_schemas import TransferConnection, TransferPlan, TransferSearchMeta, TransferSearchResult
 from .client_12306 import RailwayQueryError
 from .transfer_ticket_gateway import CST
+from .station_service import station_service
 
 
 class TransferPlanner:
@@ -23,20 +24,42 @@ class TransferPlanner:
             cache_seconds=settings.TRANSFER_CACHE_SECONDS, cache_size=settings.TRANSFER_CACHE_SIZE)
         self.limits.update(limits or {})
 
-    def search(self, request, now=None):
+    def search(self, request, now=None, *, origin_codes=None, destination_codes=None, budget_seconds=None, route_policy=None):
         now = now or datetime.now(CST)
         if request.train_date < now.date():
             raise ValueError('乘车日期不能早于今天')
+        def endpoint_codes(anchor, scope, supplied):
+            if scope == 'station':
+                return {anchor}
+            values = set(supplied) if supplied is not None else {
+                s.telecode for s in station_service.city_stations(anchor)}
+            if not values or anchor not in values:
+                raise ValueError('无法识别起点或终点的城市范围，请重新选择城市')
+            return values
+
+        origins = endpoint_codes(request.from_station, request.from_scope, origin_codes)
+        destinations = endpoint_codes(request.to_station, request.to_scope, destination_codes)
         required = request.ordered_via_stations
         self.stations.validate_via(required)
+        if any(code in origins | destinations for code in required):
+            raise ValueError('指定中转站不能属于所选起点或终点范围')
         available = [s for s in self.stations.search('', 10000)
-                     if s.station_code not in (request.from_station, request.to_station)]
+                     if s.station_code not in origins | destinations]
+        if route_policy is not None:
+            available = [s for s in available if route_policy.candidate(s.station_code)]
         by_code = {s.station_code: s for s in available}
         candidates = [by_code[c] for c in required] + [s for s in available if s.station_code not in required]
         candidates = candidates[:max(self.limits['max_candidates'], len(required))]
         by_code = {s.station_code: s for s in candidates}
         meta = TransferSearchMeta(queried_at=now, candidate_station_codes=list(by_code), limits=self.limits,
-            station_data_checked_at=min((s.verified_at for s in candidates), default=None))
+            station_data_checked_at=min((s.verified_at for s in candidates), default=None),
+            from_scope=request.from_scope, to_scope=request.to_scope,
+            origin_station_codes=sorted(origins), destination_station_codes=sorted(destinations))
+        if route_policy is not None:
+            meta.coverage_notes.extend(route_policy.notes)
+            meta.coverage_notes.append('默认使用城市中心地理距离与全程耗时排除明显绕行；地理距离不是实际铁路里程。')
+            if request.allow_large_detour:
+                meta.coverage_notes.append('已主动扩大绕行范围，仍受72小时行程及查询预算限制。')
 
         def truncated(reason):
             meta.truncated = True
@@ -45,9 +68,16 @@ class TransferPlanner:
 
         if len(available) > len(candidates):
             truncated('candidate_limit')
+        if request.from_scope == 'city' or request.to_scope == 'city':
+            meta.coverage_notes.append('城市范围依据12306车站字典；接纳代表站查询返回的同城实际车站，未逐一遍历全部站对。')
+            if len(origins) > 1 or len(destinations) > 1:
+                truncated('city_representative_query')
         if len(candidates) < request.transfer_count:
+            if meta.truncated:
+                meta.status = 'partial'
             return TransferSearchResult(plans=[], meta=meta)
-        deadline = time.monotonic() + self.limits['max_seconds']
+        deadline = time.monotonic() + min(self.limits['max_seconds'],
+            self.limits['max_seconds'] if budget_seconds is None else max(0, budget_seconds))
 
         def expired():
             if time.monotonic() >= deadline:
@@ -59,11 +89,12 @@ class TransferPlanner:
         success_count = 0
         last_request_at = None
 
-        def query(day, a, b):
+        def query(day, a, b, query_origins, query_destinations):
             nonlocal success_count, last_request_at
             if expired():
                 return None
-            key = (day, a, b, tuple(request.allowed_seats))
+            key = (day, a, b, tuple(request.allowed_seats), tuple(sorted(query_origins)),
+                   tuple(sorted(query_destinations)))
             if key in local_cache:
                 return local_cache[key]
             cached = self.cache.get(key)
@@ -84,8 +115,13 @@ class TransferPlanner:
                 return None
             meta.query_count += 1
             try:
-                values = self.gateway.query(day, a, b, request.allowed_seats,
-                                            min(remaining, self.limits['query_timeout']))
+                if query_origins == {a} and query_destinations == {b}:
+                    values = self.gateway.query(day, a, b, request.allowed_seats,
+                                                min(remaining, self.limits['query_timeout']))
+                else:
+                    values = self.gateway.query_scoped(day, a, b, request.allowed_seats,
+                        min(remaining, self.limits['query_timeout']), allowed_origin_codes=query_origins,
+                        allowed_destination_codes=query_destinations)
                 success_count += 1
                 issues = getattr(self.gateway, 'last_issues', [])
                 if issues:
@@ -147,8 +183,10 @@ class TransferPlanner:
                     horizon = legs[0].departure_at + timedelta(hours=self.limits['horizon_hours']) if legs else None
                     day = earliest.date() if legs else request.train_date
                     last_day = horizon.date() if legs else request.train_date
+                    query_origins = {start} if legs else origins
+                    query_destinations = destinations if stage == request.transfer_count else {target}
                     while day <= last_day:
-                        values = query(day, start, target)
+                        values = query(day, start, target, query_origins, query_destinations)
                         if values is None:
                             exhausted = True
                             break
@@ -161,7 +199,7 @@ class TransferPlanner:
                                 continue
                             if request.train_type == 'regular' and high_speed:
                                 continue
-                            if (item.from_station, item.to_station) != (start, target):
+                            if item.from_station not in query_origins or item.to_station not in query_destinations:
                                 continue
                             if item.departure_at.date() != day or item.departure_at < earliest:
                                 continue
@@ -194,6 +232,12 @@ class TransferPlanner:
                             new_legs = legs + [item]
                             if stage == request.transfer_count:
                                 plan = self._plan(new_legs, new_connections)
+                                if route_policy is not None:
+                                    accepted, assessment = route_policy.evaluate(
+                                        [new_legs[0].from_station] + [l.to_station for l in new_legs], plan.total_minutes)
+                                    if not accepted:
+                                        continue
+                                    plan.route_assessment = assessment
                                 complete[plan.id] = plan
                                 if len(complete) > self.limits['max_results']:
                                     truncated('result_limit')

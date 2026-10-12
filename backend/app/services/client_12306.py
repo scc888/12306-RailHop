@@ -205,9 +205,9 @@ class Ticket12306Client:
             wz = clean_seat(parts[26])
 
             def has_ticket(val: str) -> bool:
-                return val not in ("--", "无", "")
+                return val == '有' or (val.isascii() and val.isdigit() and int(val) > 0)
 
-            has_any = any(has_ticket(s) for s in [swz, zy, ze, gr, rw, srrb, yw, rz, yz, wz])
+            has_any = can_buy and any(has_ticket(s) for s in [swz, zy, ze, gr, rw, srrb, yw, rz, yz, wz])
 
             seat_info = TrainSeatInfo(
                 swz=swz,
@@ -332,17 +332,30 @@ class Ticket12306Client:
         to_code: str,
         depart_date: str
     ) -> List[TrainStopInfo]:
-        """
-        查询车次完整停靠站时刻表 (带本地内存缓存以防重复频繁请求)
-        """
-        cache_key = f"{train_no}_{depart_date}"
+        """Legacy wrapper; new planners use the strict error contract."""
+        try:
+            return self.query_train_stops_strict(train_no, from_code, to_code, depart_date)
+        except RailwayQueryError:
+            logger.warning('铁路时刻表查询未成功')
+            return []
+
+    def query_train_stops_strict(self, train_no: str, from_code: str, to_code: str,
+                                 depart_date: str, timeout_seconds: float = None) -> List[TrainStopInfo]:
+        cache_key = (train_no, depart_date, from_code, to_code)
         now = time.time()
         if cache_key in self._stops_cache:
             cache_time, cached_stops = self._stops_cache[cache_key]
             if now - cache_time < settings.STOPS_CACHE_HOURS * 3600:
                 return cached_stops
 
-        self.ensure_init()
+        deadline = time.monotonic() + (timeout_seconds or settings.REQUEST_TIMEOUT)
+
+        def remaining():
+            value = deadline - time.monotonic()
+            if value <= 0:
+                raise RailwayQueryError('铁路时刻表查询超时，请稍后重试')
+            return value
+
         params = {
             "train_no": train_no,
             "from_station_telecode": from_code,
@@ -350,28 +363,33 @@ class Ticket12306Client:
             "depart_date": depart_date
         }
         try:
+            self.ensure_init(timeout_seconds=remaining(), strict=True)
             res = self.session.get(
                 settings.STOPS_QUERY_URL,
                 params=params,
-                verify=False,
-                timeout=settings.REQUEST_TIMEOUT
+                verify=True,
+                timeout=remaining()
             )
-            if res.status_code == 200:
-                data = res.json().get("data", {}).get("data", [])
-                stops: List[TrainStopInfo] = []
-                for item in data:
-                    stops.append(TrainStopInfo(
-                        station_no=item.get("station_no", ""),
-                        station_name=item.get("station_name", ""),
-                        arrive_time=item.get("arrive_time", "--"),
-                        start_time=item.get("start_time", "--"),
-                        stopover_time=item.get("stopover_time", "--")
-                    ))
-                if stops:
-                    self._stops_cache[cache_key] = (now, stops)
-                return stops
+            if res.status_code != 200:
+                raise RailwayQueryError('铁路时刻表暂不可用，请稍后重试')
+            payload = res.json()
+            if not isinstance(payload, dict) or payload.get('status') is not True:
+                raise RailwayQueryError('铁路时刻表查询未成功，请稍后重试')
+            data = payload.get('data', {}).get('data')
+            if not isinstance(data, list) or any(not isinstance(item, dict) or
+                    not item.get('station_no') or not item.get('station_name') for item in data):
+                raise RailwayQueryError('铁路时刻表数据不完整，请稍后重试')
+            stops = [TrainStopInfo(station_no=item['station_no'], station_name=item['station_name'],
+                arrive_time=item.get('arrive_time', '--'), start_time=item.get('start_time', '--'),
+                stopover_time=item.get('stopover_time', '--')) for item in data]
+            if stops:
+                self._stops_cache[cache_key] = (now, stops)
+                if len(self._stops_cache) > 256:
+                    del self._stops_cache[next(iter(self._stops_cache))]
+            return stops
+        except RailwayQueryError:
+            raise
         except Exception as e:
-            logger.error(f"Failed to query train stops: {e}")
-        return []
+            raise RailwayQueryError('铁路时刻表查询失败，请稍后重试') from e
 
 client_12306 = Ticket12306Client()

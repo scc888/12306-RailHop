@@ -8,6 +8,7 @@ from ..services.station_service import station_service
 from ..services.transfer_station_service import TransferStationService
 from ..services.transfer_ticket_gateway import TransferTicketGateway
 from ..services.transfer_planner import TransferPlanner
+from ..services.route_policy import RoutePolicy
 
 router = APIRouter(prefix='/api/transfers', tags=['同站中转查询'])
 transfer_stations = TransferStationService()
@@ -32,7 +33,9 @@ def query_transfers(request: TransferQueryRequest, planner=Depends(get_transfer_
         station_service.ensure_loaded()
         if any(code not in station_service.code_to_name for code in (request.from_station, request.to_station)):
             raise ValueError('无法识别出发站或到达站，请从站点列表选择')
-        return ApiResponse(data=planner.search(request))
+        return ApiResponse(data=planner.search(request,route_policy=RoutePolicy(
+            request.from_station,request.to_station,station_service,
+            allow_large_detour=request.allow_large_detour,required=request.ordered_via_stations)))
     except (ValueError, OverflowError) as exc:
         raise HTTPException(400, str(exc) if isinstance(exc, ValueError) else '乘车日期超出支持范围') from exc
     finally:
