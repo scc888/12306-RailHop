@@ -210,7 +210,8 @@ class SmartRoutePlanner:
             return None
 
         if include_short_fallback:
-            for index in range(1, end):
+            # Keep one option per running train: the farthest verified buyable prefix.
+            for index in range(end - 1, 0, -1):
                 if not room():
                     return finish()
                 prefix = segment(0, index)
@@ -228,6 +229,7 @@ class SmartRoutePlanner:
                     selected_seat_code=selected.code,destination_station=to_code,
                     destination_station_name=stops[-1].station_name,scheduled_arrival_at=arrival,
                     known_price_fen=selected.price_fen or 0))
+                break
         if short_fallback_only:
             return finish()
 

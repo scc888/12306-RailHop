@@ -181,6 +181,58 @@ class SameTrainTests(unittest.TestCase):
         self.first.can_buy = False
         self.assertEqual(self.search(include_short_fallback=True, short_fallback_only=True)['short_fallbacks'], [])
 
+    def add_short_ticket_stops(self):
+        self.stops[2:2] = [stop(3, '丁', '01:58', '02:00'), stop(4, '戊', '02:28', '02:30')]
+        self.stations.get_code.side_effect = {'甲': 'AAA', '乙': 'BBB', '丁': 'DDD', '戊': 'EEE', '丙': 'CCC'}.get
+        middle = ticket('AAA', 'DDD', '23:00', '01:58', '02:58')
+        farthest = ticket('AAA', 'EEE', '23:00', '02:28', '03:28')
+        self.data[('2026-10-10', 'AAA', 'DDD')] = [middle]
+        self.data[('2026-10-10', 'AAA', 'EEE')] = [farthest]
+        return farthest
+
+    def test_short_ticket_keeps_only_farthest_available_stop_and_all_its_seats(self):
+        self.add_short_ticket_stops()
+        found = self.search(include_short_fallback=True, short_fallback_only=True)
+        self.assertEqual(len(found['short_fallbacks']), 1)
+        option = found['short_fallbacks'][0]
+        self.assertEqual(option.ticketed_leg.to_station, 'EEE')
+        self.assertEqual(option.ticketed_leg.arrival_at.isoformat(), '2026-10-11T02:28:00+08:00')
+        self.assertEqual({s.code for s in option.ticketed_leg.seats}, {'yw', 'yz'})
+        self.assertEqual(option.destination_station, 'CCC')
+        self.assertIsNone(option.extension_price_fen)
+        self.assertIsNone(option.total_price_fen)
+
+    def test_short_ticket_checks_farthest_first_with_limited_query_budget(self):
+        self.add_short_ticket_stops()
+        found = self.search(include_short_fallback=True, short_fallback_only=True, max_queries=3)
+        self.assertEqual([o.ticketed_leg.to_station for o in found['short_fallbacks']], ['EEE'])
+        self.assertEqual(found['meta']['status'], 'complete')
+        self.assertEqual(found['meta']['query_count'], 3)
+        queried = [call.args[:3] for call in self.client.query_tickets_strict.call_args_list]
+        self.assertNotIn(('2026-10-10', 'AAA', 'BBB'), queried)
+
+    def test_short_ticket_farthest_must_match_running_train_and_selected_available_seats(self):
+        farthest = self.add_short_ticket_stops()
+        for changes in [dict(can_buy=False), dict(seats=TrainSeatInfo(yw='候补', yz='0')),
+                        dict(train_no='other'), dict(run_date='20261011'),
+                        dict(seats=TrainSeatInfo(yw='有'))]:
+            with self.subTest(changes=changes):
+                self.data[('2026-10-10', 'AAA', 'EEE')] = [farthest.model_copy(update=changes)]
+                found = self.search(include_short_fallback=True, short_fallback_only=True, allowed_seats=['yz'])
+                self.assertEqual([o.ticketed_leg.to_station for o in found['short_fallbacks']], ['DDD'])
+
+    def test_short_ticket_failed_farther_query_preserves_partial_status_and_one_verified_option(self):
+        self.add_short_ticket_stops()
+        def query(day, a, b, **kwargs):
+            if b == 'EEE':
+                raise RailwayQueryError('上游失败')
+            return self.data.get((day, a, b), [])
+        self.client.query_tickets_strict.side_effect = query
+        found = self.search(include_short_fallback=True, short_fallback_only=True)
+        self.assertEqual([o.ticketed_leg.to_station for o in found['short_fallbacks']], ['DDD'])
+        self.assertEqual(found['meta']['status'], 'partial')
+        self.assertTrue(found['meta']['failed_queries'])
+
     def test_malformed_same_running_train_segment_is_unverified_not_empty(self):
         self.second.start_time = '01:01'
         found = self.search()

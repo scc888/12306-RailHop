@@ -14,8 +14,8 @@ class TransferQueryRequest(BaseModel):
     to_scope: Literal['station', 'city'] = 'station'
     train_date: date
     transfer_count: int = Field(1, ge=1, le=3)
-    # None selects each station's official reference; an explicit value is a personal floor.
-    min_transfer_minutes: int | None = Field(None, ge=15, le=1440)
+    # None selects each station's official reference; an explicit value overrides it.
+    min_transfer_minutes: int | None = Field(None, ge=1, le=1440)
     ordered_via_stations: list[str] = Field(default_factory=list)
     allowed_seats: list[str] = Field(default_factory=lambda: ['ze', 'zy', 'yz', 'yw', 'rw'])
     train_type: Literal['all', 'high_speed', 'regular'] = 'all'
@@ -48,9 +48,9 @@ class TransferStation(BaseModel):
     reference_time_checked_at: date | None = None
     reference_time_valid_from: date | None = None
     reference_time_valid_to: date | None = None
-    source_url: str
-    source_published_at: date
-    verified_at: date
+    source_url: str | None = None
+    source_published_at: date | None = None
+    verified_at: date | None = None
     applicable_conditions: str = ''
     conditions_supported: bool = True
     allowed_train_prefixes: list[str] = Field(default_factory=list)
@@ -92,7 +92,7 @@ class TransferConnection(BaseModel):
     wait_minutes: int
     required_minutes: int
     official_min_minutes: int | None = None
-    source_url: str
+    source_url: str | None = None
 
 
 class TransferPlan(BaseModel):
@@ -109,6 +109,8 @@ class TransferPlan(BaseModel):
 class TransferSearchMeta(BaseModel):
     queried_at: datetime
     candidate_station_codes: list[str]
+    candidate_station_names: dict[str, str] = Field(default_factory=dict)
+    candidate_sources: dict[str, list[str]] = Field(default_factory=dict)
     from_scope: Literal['station', 'city'] = 'station'
     to_scope: Literal['station', 'city'] = 'station'
     origin_station_codes: list[str] = Field(default_factory=list)

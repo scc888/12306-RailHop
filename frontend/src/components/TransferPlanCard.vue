@@ -23,11 +23,12 @@
           </label>
         </div>
         <div v-if="plan.connections[index]" class="rounded-xl bg-indigo-50/70 border border-indigo-100 px-4 py-3 text-xs text-indigo-800">
-          <p class="font-semibold">{{ plan.connections[index].station.station_name }} · 站内便捷换乘 · 等待 {{ plan.connections[index].wait_minutes }} 分钟</p>
+          <p class="font-semibold">{{ plan.connections[index].station.station_name }} · {{ plan.connections[index].station.convenient_transfer_confirmed ? '站内便捷换乘' : '同站中转 · 便捷换乘状态未核实' }} · 等待 {{ plan.connections[index].wait_minutes }} 分钟</p>
           <p class="mt-1 opacity-80">满足本次至少 {{ plan.connections[index].required_minutes }} 分钟的条件，请按站内指引换乘。</p>
-          <p class="mt-1 opacity-80">{{ plan.connections[index].official_min_minutes != null ? `12306 本站参考 ${plan.connections[index].official_min_minutes} 分钟` : '无适用官方时间，基础参考按 15 分钟' }}；个人设置更长时采用个人值。</p>
+          <p class="mt-1 opacity-80">{{ plan.connections[index].official_min_minutes != null ? `12306 本站参考 ${plan.connections[index].official_min_minutes} 分钟` : `无适用官方时间，默认参考 ${plan.connections[index].station.convenient_transfer_confirmed ? 15 : 60} 分钟` }}；自定义时采用个人值。</p>
+          <p v-if="!plan.connections[index].station.convenient_transfer_confirmed" class="mt-1">可能需要出站重新安检进站，请核对开放时段和检票截止时间。</p>
           <p v-if="plan.connections[index].official_min_minutes != null && plan.connections[index].station.reference_time_source_url" class="mt-1"><a :href="plan.connections[index].station.reference_time_source_url" target="_blank" rel="noopener noreferrer" class="underline">换乘时间来源：12306</a> · 采集 {{ plan.connections[index].station.reference_time_checked_at }}</p>
-          <details class="mt-2"><summary class="cursor-pointer">便捷换乘资料</summary><p class="mt-2">{{ plan.connections[index].station.applicable_conditions }}</p><p class="mt-1">资料发布 {{ plan.connections[index].station.source_published_at }} · 资料核验 {{ plan.connections[index].station.verified_at }}</p><a :href="plan.connections[index].source_url" target="_blank" rel="noopener noreferrer" class="underline inline-block mt-1">查看车站资料来源</a></details>
+          <details class="mt-2"><summary class="cursor-pointer">便捷换乘资料</summary><p class="mt-2">{{ plan.connections[index].station.applicable_conditions }}</p><p v-if="plan.connections[index].station.verified_at" class="mt-1">资料发布 {{ plan.connections[index].station.source_published_at }} · 资料核验 {{ plan.connections[index].station.verified_at }}</p><a v-if="plan.connections[index].source_url" :href="plan.connections[index].source_url" target="_blank" rel="noopener noreferrer" class="underline inline-block mt-1">查看车站资料来源</a></details>
         </div>
       </template>
     </div>

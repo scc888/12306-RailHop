@@ -1,10 +1,35 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildJourneyText, buildShortTicketText, createJourneyQueryController, findExactStation, shanghaiDate, addDays, journeySummary, groupNotices } from '../src/lib/journey.js'
+import { buildJourneyText, buildShortTicketText, createJourneyQueryController, findExactStation, shanghaiDate, addDays, journeySummary, groupNotices,hasTicket,trainHasSeats,trainArrivalDay,journeyDayLabel } from '../src/lib/journey.js'
 
 const leg = (overrides = {}) => ({train_code:'K1',from_station_name:'上海',to_station_name:'南京',departure_at:'2026-10-11T23:00:00+08:00',arrival_at:'2026-10-12T01:00:00+08:00',seats:[{code:'yw',name:'硬卧',price_fen:12005},{code:'yz',name:'硬座',price_fen:null}],...overrides})
 const result = () => Object.fromEntries(['direct','same_train','transfer'].map(key=>[key,{plans:[],meta:{status:'complete',notices:[]}}]))
 const response = data => ({ok:true,json:async()=>({code:200,data})})
+
+test('分段跨日标记始终相对全程出发日，按铁路日期计算',()=>{
+  const start='2026-12-31T20:04:00+08:00'
+  assert.equal(journeyDayLabel('2026-12-31T21:29:00+08:00',start),'')
+  assert.equal(journeyDayLabel('2027-01-01T07:43:00+08:00',start),'次日')
+  assert.equal(journeyDayLabel('2027-01-01T07:49:00+08:00',start),'次日')
+  assert.equal(journeyDayLabel('2027-01-02T01:00:00+08:00',start),'第3天')
+  assert.equal(journeyDayLabel(null,start),'')
+})
+
+test('车次余票不把候补零票或不可售计为现票，跨日以铁路日期计算',()=>{
+  for(const value of ['候补','0','--','无','未开售','１２',' 2','-1'])assert.equal(hasTicket(value),false)
+  assert.equal(hasTicket('有'),true);assert.equal(hasTicket('2'),true)
+  assert.equal(trainHasSeats({can_buy:false,seats:{ze:'有'}},['ze']),false)
+  assert.equal(trainHasSeats({can_buy:true,seats:{ze:'无',yw:'1'}},['ze','yw']),true)
+  assert.equal(trainArrivalDay({departure_at:'2026-10-10T23:00:00+08:00',arrival_at:'2026-10-12T01:00:00+08:00'}),'+2天')
+})
+
+test('指定车次请求保留运行日和实际上车区间，不能只传显示车次',async()=>{
+  const selected_train={train_no:'physical-K1',run_date:'2026-10-09',from_station:'SHH',to_station:'BJP',departure_at:'2026-10-10T23:00:00+08:00'}
+  let sent
+  const controller=createJourneyQueryController(async(url,options)=>{sent=JSON.parse(options.body);return response({...result(),selected_train})})
+  await controller.search({mode:'all',selected_train})
+  assert.deepEqual(sent.selected_train,selected_train)
+})
 
 test('同车复制保留跨日、逐段席别和精确金额，不保证不下车',()=>{
   const plan={kind:'same_train',legs:[leg(),leg({from_station_name:'南京',to_station_name:'北京',departure_at:'2026-10-12T01:06:00+08:00',arrival_at:'2026-10-12T12:00:00+08:00'})],connections:[],selected_seat_codes:['yw','yw'],total_minutes:780}

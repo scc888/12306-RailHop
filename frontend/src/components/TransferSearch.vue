@@ -28,8 +28,8 @@
           </label>
           <div class="text-xs font-semibold text-slate-600">
             <label class="flex items-center gap-2"><input v-model="useOfficialTime" type="checkbox" class="accent-blue-600" />按各中转站官方参考时间（默认）</label>
-            <label v-if="!useOfficialTime" class="block mt-2">个人最少换乘时间（分钟）<input v-model.number="minMinutes" type="number" min="15" max="1440" step="1" required class="transfer-input" /></label>
-            <p v-else class="mt-2 font-normal text-slate-500 leading-relaxed">每个站分别计算；缺少适用官方数据时使用 15 分钟。</p>
+            <label v-if="!useOfficialTime" class="block mt-2">个人最少换乘时间（分钟）<input v-model.number="minMinutes" type="number" min="1" max="1440" step="1" required class="transfer-input" /></label>
+            <p v-else class="mt-2 font-normal text-slate-500 leading-relaxed">每站分别计算；缺少官方时间时，已核实便捷换乘参考15分钟，便捷换乘状态未核实默认60分钟。</p>
           </div>
           <label class="text-xs font-semibold text-slate-600">结果排序
             <select v-model="sortBy" class="transfer-input"><option value="duration">全程耗时最短</option><option value="arrival">最早到达</option><option value="price">所选席别总价最低</option></select>
@@ -39,12 +39,12 @@
           <div class="flex justify-between items-center gap-2"><label for="transfer-via-0" class="text-xs font-semibold text-slate-600">指定中转站（可选，按顺序经过）</label><button type="button" @click="addVia" :disabled="viaTexts.length >= transferCount" class="text-xs text-blue-700 font-semibold disabled:text-slate-400 cursor-pointer">＋ 添加指定站</button></div>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
             <div v-for="(_,index) in viaTexts" :key="index" class="flex gap-2 items-center">
-              <input :id="`transfer-via-${index}`" v-model="viaTexts[index]" list="transfer-via-stations" :aria-label="`第${index + 1}个指定中转站`" :placeholder="`指定站 ${index + 1}，留空自动规划`" class="transfer-input !mt-0" />
+              <input :id="`transfer-via-${index}`" v-model="viaTexts[index]" @input="suggestVia(viaTexts[index])" @focus="suggestVia(viaTexts[index])" list="transfer-via-stations" :aria-label="`第${index + 1}个指定中转站`" :placeholder="`指定站 ${index + 1}，留空自动规划`" class="transfer-input !mt-0" />
               <button v-if="viaTexts.length > 1" type="button" @click="viaTexts.splice(index,1)" :aria-label="`移除第${index + 1}个指定站`" class="text-slate-400 hover:text-rose-600 px-1 cursor-pointer">×</button>
             </div>
           </div>
-          <datalist id="transfer-via-stations"><option v-for="s in stations" :key="s.station_code" :value="s.station_name">{{ s.pinyin }} · {{ s.pinyin_abbr }}</option></datalist>
-          <p class="text-xs text-slate-500 mt-2">已收录 {{ stations.length }} 个有便捷换乘资料的车站；未指定的位置由系统推荐。</p>
+          <datalist id="transfer-via-stations"><option v-for="s in viaSuggestions.length ? viaSuggestions : stations" :key="s.station_code" :value="s.station_name">{{ s.pinyin }} · {{ s.pinyin_abbr }}</option></datalist>
+          <p class="text-xs text-slate-500 mt-2">可从完整车站字典指定中转站；已收录 {{ stations.length }} 站便捷换乘参考资料，未指定的位置动态发现。</p>
           <p v-if="stationError" role="alert" class="text-xs text-rose-700 mt-2">{{ stationError }}</p>
         </div>
         <fieldset><legend class="text-xs font-semibold text-slate-600 mb-2">可接受席别（各段可分别选择）</legend>
@@ -52,7 +52,7 @@
           <p class="mt-2 text-xs text-slate-500">普速车请勾选硬座、硬卧或软卧等席别；每段仍须有你所选席别的现票。</p>
         </fieldset>
         <div class="flex flex-wrap justify-between items-center gap-4 border-t border-slate-100 pt-4">
-          <p class="text-xs text-slate-500 max-w-xl leading-relaxed">默认使用 12306 各站参考时间；自定义时取个人设置与官方值中的较大值。参考数据为已采集快照，实际安排以车站为准。</p>
+          <p class="text-xs text-slate-500 max-w-xl leading-relaxed">默认使用 12306 各站参考时间；自定义时完全采用个人设置。参考数据为已采集快照，实际安排以车站为准。</p>
           <button type="submit" :disabled="loading" class="px-6 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 cursor-pointer">{{ loading ? '正在寻找路线…' : '查询中转方案' }}</button>
         </div>
       </form>
@@ -67,7 +67,7 @@
       <div v-else-if="result.meta.truncated || result.meta.failed_pairs.length" class="rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-sm p-4"><p class="font-semibold">以下是已查询范围内的推荐，结果可能不完整。</p><p class="text-xs mt-1">{{ truncationText }}<span v-if="result.meta.failed_pairs.length"> {{ result.meta.failed_pairs.length }} 个区间查询失败或数据异常。</span></p></div>
       <p v-if="!result.plans.length && result.meta.status !== 'upstream_error'" class="p-7 text-center bg-white rounded-2xl border border-slate-200 text-sm text-slate-500">本次搜索范围内未找到符合席别与换乘条件的路线，可尝试修改日期、指定站或中转次数。</p>
       <TransferPlanCard v-for="(plan,index) in sortedPlans" :key="plan.id" :plan="plan" :rank="index + 1" @seat-change="changeSeat" />
-      <details class="rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-500"><summary class="cursor-pointer font-semibold">查看本次查询范围与车站资料</summary><p class="mt-3 leading-relaxed">候选中转站：{{ candidateNames }}。首段按所选日期查询，后续行程最多 {{ result.meta.limits.horizon_hours }} 小时；最多查询 {{ result.meta.limits.max_queries }} 个日期区间、处理 {{ result.meta.limits.max_states }} 个搜索状态，展示前 {{ result.meta.limits.max_results }} 条路线。</p><p class="mt-2">余票为短期快照；便捷换乘资料不是通道实时开放状态。普速与高铁动车均按同站、官方参考时间及车站适用条件核对；当前资料限同日到发换乘，临时调整以车站公告为准。</p></details>
+      <details class="rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-500"><summary class="cursor-pointer font-semibold">查看本次查询范围与车站资料</summary><p class="mt-3 leading-relaxed">候选中转站：{{ candidateNames }}。首段按所选日期查询，后续行程最多 {{ result.meta.limits.horizon_hours }} 小时；最多进行 {{ result.meta.limits.max_queries }} 次车次、经停站及区间查询，处理 {{ result.meta.limits.max_states }} 个搜索状态，展示前 {{ result.meta.limits.max_results }} 条路线。</p><p class="mt-2">余票为短期快照；便捷换乘资料不是通道实时开放状态。已有资料按本站同日到发等条件核对；状态未核实的普通同站中转可能需要出站重新安检，跨日时请自行核对车站开放时段。临时调整以车站公告为准。</p></details>
     </section>
   </div>
 </template>
@@ -76,6 +76,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import TransferPlanCard from './TransferPlanCard.vue'
 import { seatOptions, defaultSeatCodes, sortPlans, createTransferQueryController, formatDateTime } from '../lib/transfer.js'
+import { resolveViaStations } from '../lib/journey.js'
 const props = defineProps({ initialFrom:String, initialTo:String, initialDate:String, initialSeats:Array, initialTrainType:String })
 const today = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())
 const fromText = ref(props.initialFrom || '')
@@ -89,6 +90,7 @@ const allowedSeats = ref(props.initialSeats?.length ? [...props.initialSeats] : 
 const trainType = ref(props.initialTrainType || 'all')
 const sortBy = ref('duration')
 const stations = ref([])
+const viaSuggestions = ref([])
 const fromSuggestions = ref([])
 const toSuggestions = ref([])
 const loading = ref(false)
@@ -99,10 +101,10 @@ const stationError = ref('')
 const controller = createTransferQueryController()
 let requestId = 0
 const sortNames = {duration:'全程耗时',arrival:'到达时间',price:'当前所选总价'}
-const reasons = {candidate_limit:'候选站范围受限',query_limit:'达到区间查询上限',time_limit:'达到查询时间上限',state_limit:'达到组合搜索上限',result_limit:'仅展示前列方案',horizon_limit:'已排除超出行程时间范围的车次'}
+const reasons = {dynamic_discovery:'采用经停站与方向探测，未遍历全国全部车次',discovery_limit:'候选发现达到预算上限',stage_budget:'部分路段展开受限，已为后续路段预留预算',candidate_limit:'候选站范围受限',query_limit:'达到查询请求上限',time_limit:'达到查询时间上限',state_limit:'达到组合搜索上限',result_limit:'仅展示前列方案',horizon_limit:'已排除超出行程时间范围的车次'}
 const sortedPlans = computed(() => sortPlans(result.value?.plans || [],sortBy.value))
 const truncationText = computed(() => (result.value?.meta.truncation_reasons || []).map(r=>reasons[r] || r).join('；'))
-const candidateNames = computed(() => (result.value?.meta.candidate_station_codes || []).map(c=>stations.value.find(s=>s.station_code===c)?.station_name || c).join('、'))
+const candidateNames = computed(() => (result.value?.meta.candidate_station_codes || []).map(c=>result.value?.meta.candidate_station_names?.[c] || stations.value.find(s=>s.station_code===c)?.station_name || c).join('、'))
 function invalidate() { requestId++; controller.cancel(); loading.value=false; result.value=null; error.value=''; queryNotice.value='' }
 watch([fromText,toText,trainDate,transferCount,minMinutes,useOfficialTime,viaTexts,allowedSeats,trainType],invalidate,{deep:true,flush:'sync'})
 watch(sortBy,()=>{
@@ -114,9 +116,19 @@ watch(() => [props.initialFrom,props.initialTo,props.initialDate],([from,to,day]
 onUnmounted(invalidate)
 onMounted(async()=>{
   try { const response=await fetch('/api/transfers/stations?limit=100'); if(!response.ok) throw new Error(); const body=await response.json(); stations.value=body.data || [] }
-  catch { stationError.value='便捷换乘车站资料暂未加载，请刷新后重试。' }
+  catch { stationError.value='便捷换乘参考资料暂未加载，仍可搜索并指定车站。' }
 })
-const suggestionIds = {from:0,to:0}
+const suggestionIds = {from:0,to:0,via:0}
+async function stationLookup(value,signal) {
+  const response=await fetch(`/api/stations/search?keyword=${encodeURIComponent(value.trim())}&limit=30`,{signal})
+  if(!response.ok) throw new Error('车站搜索暂不可用，请稍后重试')
+  return (await response.json()).data || []
+}
+async function suggestVia(value) {
+  const id=++suggestionIds.via
+  try { const found=await stationLookup(value); if(id===suggestionIds.via) viaSuggestions.value=found.map(s=>({...s,station_name:s.name,station_code:s.telecode})) }
+  catch { /* Submission reports lookup failures. */ }
+}
 async function suggest(which) {
   const id=++suggestionIds[which]
   const value=which==='from' ? fromText.value : toText.value
@@ -141,14 +153,9 @@ async function search() {
     if(!allowedSeats.value.length) throw new Error('请至少选择一种可接受席别')
     const specified=viaTexts.value.map(s=>s.trim()).filter(Boolean)
     if(specified.length>transferCount.value) throw new Error('请移除多出的指定站，或增加中转站数量')
-    const via=specified.map(word=>{
-      const s=stations.value.find(s=>[s.station_name,s.station_code,s.pinyin,s.pinyin_abbr].some(v=>v.toLowerCase()===word.toLowerCase()))
-      if(!s) throw new Error(`“${word}”尚无可用的便捷换乘资料，请从已收录站中选择`)
-      return s.station_code
-    })
-    const data=await controller.search({train_date:trainDate.value,train_type:trainType.value,transfer_count:transferCount.value,min_transfer_minutes:useOfficialTime.value ? null : minMinutes.value,ordered_via_stations:via,allowed_seats:[...allowedSeats.value],sort_by:sortBy.value}, async(request,signal)=>{
-      const [from,to]=await Promise.all([resolveStation(fromText.value,signal),resolveStation(toText.value,signal)])
-      return {...request,from_station:from,to_station:to}
+    const data=await controller.search({train_date:trainDate.value,train_type:trainType.value,transfer_count:transferCount.value,min_transfer_minutes:useOfficialTime.value ? null : minMinutes.value,ordered_via_stations:[],allowed_seats:[...allowedSeats.value],sort_by:sortBy.value}, async(request,signal)=>{
+      const [from,to,via]=await Promise.all([resolveStation(fromText.value,signal),resolveStation(toText.value,signal),resolveViaStations(specified,stationLookup,signal)])
+      return {...request,from_station:from,to_station:to,ordered_via_stations:via}
     })
     if(id===requestId && data) result.value=data
   } catch(e) { if(id===requestId) error.value=e instanceof SyntaxError ? '查询服务响应异常，请稍后重试' : e.message }

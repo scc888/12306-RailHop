@@ -8,6 +8,27 @@ export const journeyKinds = [
 
 export const sameTrainReminder = '各段需分别有有效车票，按实际席位接续；重联列车可能需按工作人员指引经站台换厢。'
 
+export function hasTicket(value) {
+  return value==='有' || (typeof value==='string' && /^[0-9]+$/.test(value) && Number(value)>0)
+}
+
+export function trainHasSeats(train,codes) {
+  return train.can_buy && codes.some(code=>hasTicket(train.seats?.[code]))
+}
+
+export function trainArrivalDay(train) {
+  if(!train.departure_at || !train.arrival_at) return ''
+  // Use the explicit railway local calendar dates, independent of the browser timezone.
+  const days=Math.round((Date.parse(`${train.arrival_at.slice(0,10)}T00:00:00Z`)-Date.parse(`${train.departure_at.slice(0,10)}T00:00:00Z`))/86400000)
+  return days>0 ? `+${days}天` : ''
+}
+
+export function journeyDayLabel(value, departure) {
+  if(!value || !departure)return ''
+  const days=Math.round((Date.parse(`${value.slice(0,10)}T00:00:00Z`)-Date.parse(`${departure.slice(0,10)}T00:00:00Z`))/86400000)
+  return days===1 ? '次日' : days>1 ? `第${days+1}天` : ''
+}
+
 export function shanghaiDate(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now)
   const value = key => parts.find(p=>p.type===key).value
@@ -44,6 +65,11 @@ export function findExactStation(stations, value, scope = 'station') {
 
 export function groupNotices(group) {
   return (group?.meta?.notices || []).map(value=>typeof value==='string' ? value : value?.message).filter(Boolean)
+}
+
+export async function resolveViaStations(values, lookup, signal) {
+  return Promise.all(values.map(value=>value.trim()).filter(Boolean).map(async value=>
+    findExactStation(await lookup(value,signal),value).telecode))
 }
 
 export function journeySummary(group) {

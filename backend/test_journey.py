@@ -90,6 +90,47 @@ class JourneyTests(unittest.TestCase):
         self.same.calculate_with_meta.assert_not_called()
         self.transfer.search.assert_not_called()
 
+    def test_train_list_keeps_sold_out_trains_and_exposes_stable_selection(self):
+        self.anchor.seats = TrainSeatInfo()
+        result = self.service.search(self.request(mode='direct'), now=NOW)
+        self.assertEqual(result.direct.plans, [])
+        self.assertEqual(len(result.trains), 1)
+        row = result.trains[0]
+        self.assertEqual(row.train_code, 'K1')
+        self.assertEqual(row.selection.train_no, self.anchor.train_no)
+        self.assertEqual(row.selection.run_date.isoformat(), '2026-10-10')
+        self.assertIn('run_date', row.model_dump(mode='json')['selection'])
+
+    def test_selected_train_bypasses_four_candidate_limit_and_anchors_transfer(self):
+        self.anchor.seats = TrainSeatInfo()
+        self.client.query_tickets_strict.return_value = [
+            self.anchor.model_copy(update={'train_no': str(i), 'train_code': f'K{i+1}'}) for i in range(7)]
+        listing = self.service.search(self.request(mode='direct'), now=NOW)
+        selection = listing.trains[-1].selection
+        result = self.service.search(self.request(mode='all', selected_train=selection), now=NOW)
+        self.same.calculate_with_meta.assert_called_once()
+        self.assertEqual(self.same.calculate_with_meta.call_args.kwargs['anchor_ticket'].train_no, '6')
+        anchor = self.transfer.search.call_args.kwargs['first_train']
+        self.assertEqual(anchor.selection, selection)
+        self.assertEqual(result.selected_train, selection)
+
+    def test_stale_selected_train_and_failed_refresh_never_search_other_trains(self):
+        selection = self.service.search(self.request(mode='direct'), now=NOW).trains[0].selection
+        self.client.query_tickets_strict.return_value = [self.anchor.model_copy(update={'train_no':'other'})]
+        with self.assertRaisesRegex(ValueError, '所选车次'):
+            self.service.search(self.request(mode='all', selected_train=selection), now=NOW)
+        self.transfer.search.assert_not_called()
+        self.client.query_tickets_strict.side_effect = RailwayQueryError('failed')
+        result = self.service.search(self.request(mode='all', selected_train=selection), now=NOW)
+        self.assertEqual(result.transfer.meta.status, 'upstream_error')
+        self.transfer.search.assert_not_called()
+
+    def test_unverified_train_remains_visible_without_selectable_identity(self):
+        self.anchor.run_date = None
+        result = self.service.search(self.request(mode='direct'), now=NOW)
+        self.assertEqual(len(result.trains), 1)
+        self.assertIsNone(result.trains[0].selection)
+
     def test_auto_no_preferred_direct_seat_checks_both_alternatives(self):
         self.anchor.seats = TrainSeatInfo()
         result = self.service.search(self.request(), now=NOW)

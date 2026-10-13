@@ -39,6 +39,28 @@ class Samples:
 
 
 class PlannerTests(unittest.TestCase):
+    def test_selected_first_train_excludes_other_runs_stations_and_later_departures(self):
+        from app.models.journey_schemas import JourneyTrain, SelectedTrain
+        from test_same_train import ticket
+        anchor = JourneyTrain(**ticket(start='08:00', arrive='12:00', duration='04:00').model_dump(),
+            id='selected', departure_at=datetime(2026,10,10,8,tzinfo=CST),
+            arrival_at=datetime(2026,10,10,12,tzinfo=CST),
+            selection=SelectedTrain(train_no='physical-1', run_date='2026-10-09',
+                from_station='AAA', to_station='CCC', departure_at='2026-10-10T08:00:00+08:00'))
+        good = leg('AAA','BBB','2026-10-10T08:00','2026-10-10T09:00', 'K1')
+        good.train_no, good.run_date = 'physical-1', date(2026,10,9)
+        wrongs = [good.model_copy(update=changes) for changes in [
+            {'train_no':'other'}, {'run_date':date(2026,10,10)}, {'run_date':None},
+            {'departure_at':good.departure_at+timedelta(minutes=5)}, {'from_station':'AAB'},
+            {'arrival_at':anchor.arrival_at+timedelta(minutes=5)}]]
+        second = leg('BBB','ZZZ','2026-10-10T09:15','2026-10-10T10:00','G2')
+        planner = TransferPlanner(TransferStationService(entries=[station('BBB')]),
+            Samples(wrongs+[good,second]), sleep_fn=lambda _:None)
+        request = TransferQueryRequest(from_station='AAA',to_station='ZZZ',train_date='2026-10-10')
+        result = planner.search(request,now=NOW,first_train=anchor)
+        self.assertEqual(len(result.plans),1)
+        self.assertEqual(result.plans[0].legs[0],good)
+
     def search(self, legs, stations=None, limits=None, **kwargs):
         gateway = Samples(legs)
         planner = TransferPlanner(TransferStationService(entries=stations or [station('BBB')]), gateway,
@@ -51,7 +73,7 @@ class PlannerTests(unittest.TestCase):
                 leg('BBB','ZZZ',f'2026-10-10T09:{minute:02d}','2026-10-10T10:00', 'G2', price)]
 
     def test_wait_boundary_and_user_and_station_threshold(self):
-        for minutes, selected, reference, count in [(14,15,None,0),(15,15,None,1),(20,30,None,0),(20,15,30,0),(30,30,None,1)]:
+        for minutes, selected, reference, count in [(14,15,None,0),(15,15,None,1),(20,30,None,0),(20,15,30,1),(30,30,None,1),(9,10,60,0),(10,10,60,1),(10,10,None,1)]:
             with self.subTest(minutes=minutes, selected=selected, reference=reference):
                 result, _ = self.search(self.pair(minutes), stations=[station('BBB', reference)], min_transfer_minutes=selected)
                 self.assertEqual(len(result.plans), count)

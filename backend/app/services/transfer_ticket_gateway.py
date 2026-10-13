@@ -55,6 +55,15 @@ class TransferTicketGateway:
         self.client = client or Ticket12306Client()
         self.last_issues = []
 
+    def candidate_trains(self, train_date, from_code, to_code, timeout_seconds):
+        """Include unsold trains: a sold-out full interval can have buyable prefixes."""
+        return self.client.query_tickets_strict(train_date.isoformat(), from_code, to_code,
+                                                timeout_seconds=timeout_seconds)
+
+    def train_stops(self, train_date, ticket, timeout_seconds):
+        return self.client.query_train_stops_strict(ticket.train_no, ticket.from_station_telecode,
+            ticket.to_station_telecode, train_date.isoformat(), timeout_seconds=timeout_seconds)
+
     def query(self, train_date: date, from_code: str, to_code: str,
               allowed_seats: list[str], timeout_seconds: float) -> list[TransferLeg]:
         return self.query_scoped(train_date, from_code, to_code, allowed_seats, timeout_seconds)
@@ -68,11 +77,16 @@ class TransferTicketGateway:
         guaranteed to contain every station pair; callers must disclose that coverage.
         Omitting either set keeps that endpoint exact, including intermediate stops.
         """
+        tickets = self.client.query_tickets_strict(train_date.isoformat(), from_code, to_code,
+                                                  timeout_seconds=timeout_seconds)
+        return self.legs_from_tickets(tickets, train_date, from_code, to_code, allowed_seats,
+            allowed_origin_codes=allowed_origin_codes, allowed_destination_codes=allowed_destination_codes)
+
+    def legs_from_tickets(self, tickets, train_date, from_code, to_code, allowed_seats, *,
+                          allowed_origin_codes=None, allowed_destination_codes=None):
         origins = set(allowed_origin_codes) if allowed_origin_codes is not None else {from_code}
         destinations = set(allowed_destination_codes) if allowed_destination_codes is not None else {to_code}
         self.last_issues = []
-        tickets = self.client.query_tickets_strict(train_date.isoformat(), from_code, to_code,
-                                                  timeout_seconds=timeout_seconds)
         result = []
         for ticket in tickets:
             if ticket.from_station_telecode not in origins or ticket.to_station_telecode not in destinations:

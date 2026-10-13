@@ -1,0 +1,13 @@
+{
+  "source_url": "https://www.12306.cn/index/otn/index12306/queryLCtime",
+  "page_url": "https://www.12306.cn/index/view/infos/sale_time.html",
+  "queried_on": "2026-10-13",
+  "query_date": "2026-10-14",
+  "method": "POST",
+  "form_fields": ["trainDate", "from_station_telecode"],
+  "records": [
+    {"from_station_telecode":"IZQ","to_station_telecode":"IZQ","relay_time":15,"communication_code":"1","start_date":"20000101","stop_date":"20991231"},
+    {"from_station_telecode":"ICW","to_station_telecode":"ICW","relay_time":15,"communication_code":"1","start_date":"20000101","stop_date":"20991231"},
+    {"from_station_telecode":"NCG","to_station_telecode":"NCG","relay_time":30,"communication_code":"0","start_date":"20000101","stop_date":"20991231"}
+  ]
+}

@@ -1,8 +1,25 @@
 """One read-only request and consistent plans for all journey types."""
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from pydantic import BaseModel, Field, ConfigDict
 from .transfer_schemas import TransferQueryRequest, TransferPlan, TransferLeg
+from .schemas import TrainTicketInfo
+
+
+class SelectedTrain(BaseModel):
+    """Exact physical run and boarding interval; refreshed server-side before planning."""
+    train_no: str = Field(min_length=1, max_length=64)
+    run_date: date
+    from_station: str = Field(pattern=r'^[A-Z]{3}$')
+    to_station: str = Field(pattern=r'^[A-Z]{3}$')
+    departure_at: datetime
+
+
+class JourneyTrain(TrainTicketInfo):
+    id: str
+    selection: SelectedTrain | None = None
+    departure_at: datetime | None = None
+    arrival_at: datetime | None = None
 
 
 class JourneyQueryRequest(TransferQueryRequest):
@@ -11,6 +28,7 @@ class JourneyQueryRequest(TransferQueryRequest):
     mode: Literal['auto','all','direct','same_train','transfer'] = 'auto'
     max_same_train_segments: int = Field(2, ge=2, le=3)
     include_short_fallback: bool = False
+    selected_train: SelectedTrain | None = None
 
 
 class JourneyPlan(TransferPlan):
@@ -51,6 +69,8 @@ class ShortTicketGroup(BaseModel):
 
 
 class JourneyResult(BaseModel):
+    trains: list[JourneyTrain] = Field(default_factory=list)
+    selected_train: SelectedTrain | None = None
     direct: JourneyGroup
     same_train: JourneyGroup
     transfer: JourneyGroup

@@ -10,7 +10,8 @@ class StationTests(unittest.TestCase):
         request = TransferQueryRequest(**base)
         self.assertEqual((request.transfer_count, request.min_transfer_minutes, request.allowed_seats, request.train_type), (1, None, ['ze', 'zy','yz','yw','rw'], 'all'))
         self.assertIsNone(TransferQueryRequest(**base, min_transfer_minutes=None).min_transfer_minutes)
-        for change in [dict(transfer_count=0), dict(transfer_count=4), dict(min_transfer_minutes=14),
+        for change in [dict(transfer_count=0), dict(transfer_count=4), dict(min_transfer_minutes=0),
+                       dict(min_transfer_minutes=-1), dict(min_transfer_minutes=1441),
                        dict(allowed_seats=[]), dict(allowed_seats=['bad']), dict(train_type='bad'),
                        dict(ordered_via_stations=['NJH', 'NJH']), dict(ordered_via_stations=['NJH', 'HGH']),
                        dict(to_station='SHH')]:
@@ -26,16 +27,20 @@ class StationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             service.validate_via(['BAD'])
 
-    def test_unknown_or_unresolved_conditions_not_recommended(self):
+    def test_unknown_conditions_are_not_advertised_as_convenient_but_dictionary_station_is_allowed(self):
+        from app.services.station_service import StationService
         common = dict(station_name='测试站', station_code='AAA', pinyin='ceshi', pinyin_abbr='cs',
                       source_url='https://www.12306.cn/', source_published_at='2026-01-01', verified_at='2026-10-10')
         entries = [TransferStation(**common, convenient_transfer_confirmed=False),
                    TransferStation(**(common | dict(station_code='BBB')), applicable_conditions='仅部分站场', conditions_supported=False)]
-        service = TransferStationService(entries=entries)
+        directory = StationService()
+        directory._parse_station_text('@a|甲|AAA|jia|j|0|a|甲城@b|乙|BBB|yi|y|0|b|乙城')
+        service = TransferStationService(entries=entries, directory=directory)
         self.assertEqual(service.search(''), [])
         for code in ['AAA', 'BBB']:
-            with self.assertRaises(ValueError):
-                service.validate_via([code])
+            station = service.validate_via([code])[0]
+            self.assertFalse(station.convenient_transfer_confirmed)
+            self.assertIsNone(station.source_url)
 
     def test_official_time_values_and_separate_provenance(self):
         service = TransferStationService()

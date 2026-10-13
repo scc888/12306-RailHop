@@ -36,9 +36,31 @@ class TransferApiTests(unittest.TestCase):
         finally:
             app.dependency_overrides.clear()
 
+    def test_unlisted_manual_station_through_api_has_unknown_status_and_no_false_source(self):
+        from app.api.transfer_routes import get_transfer_planner
+        samples = Samples([leg('SHH','ENH','2026-10-10T08:00','2026-10-10T09:00'),
+                           leg('ENH','BJP','2026-10-10T10:00','2026-10-10T12:00','G2')])
+        planner = TransferPlanner(TransferStationService(), samples, limits={'request_interval':0})
+        original = planner.search
+        planner.search = lambda request, **kwargs: original(request, now=NOW, **kwargs)
+        app.dependency_overrides[get_transfer_planner] = lambda: planner
+        try:
+            response = self.client.post('/api/transfers/query', json=self.body | dict(ordered_via_stations=['ENH']))
+            self.assertEqual(response.status_code,200)
+            payload = response.json()['data']
+            connection = payload['plans'][0]['connections'][0]
+            self.assertEqual(connection['station']['station_name'],'合肥南')
+            self.assertFalse(connection['station']['convenient_transfer_confirmed'])
+            self.assertEqual(connection['required_minutes'],60)
+            self.assertIsNone(connection['source_url'])
+            self.assertIsNone(connection['station']['verified_at'])
+            self.assertEqual(payload['meta']['candidate_sources']['ENH'],['manual'])
+        finally:
+            app.dependency_overrides.clear()
+
     def test_validation_and_busy_release(self):
         from app.api.transfer_routes import transfer_lock
-        self.assertEqual(self.client.post('/api/transfers/query', json=self.body | dict(min_transfer_minutes=14)).status_code, 422)
+        self.assertEqual(self.client.post('/api/transfers/query', json=self.body | dict(min_transfer_minutes=0)).status_code, 422)
         self.assertEqual(self.client.post('/api/transfers/query', json=self.body | dict(ordered_via_stations=['AAA'])).status_code, 400)
         self.assertEqual(self.client.post('/api/transfers/query', json=self.body | dict(from_station='AAA')).status_code, 400)
         transfer_lock.acquire()
@@ -48,6 +70,29 @@ class TransferApiTests(unittest.TestCase):
             transfer_lock.release()
         self.assertEqual(self.client.post('/api/transfers/query', json=self.body | dict(ordered_via_stations=['AAA'])).status_code, 400)
         self.assertFalse(transfer_lock.locked())
+
+    def test_personal_time_overrides_zhengzhou_official_reference(self):
+        from app.api.transfer_routes import get_transfer_planner
+        samples = Samples([leg('BJP','ZAF','2026-10-10T08:00','2026-10-10T09:00'),
+                           leg('ZAF','SHH','2026-10-10T09:10','2026-10-10T12:00','D7')])
+        planner = TransferPlanner(TransferStationService(), samples, sleep_fn=lambda _: None)
+        original = planner.search
+        planner.search = lambda request, **kwargs: original(request, now=NOW, **kwargs)
+        app.dependency_overrides[get_transfer_planner] = lambda: planner
+        body = self.body | dict(from_station='BJP', to_station='SHH', ordered_via_stations=['ZAF'])
+        try:
+            for selected, count in [(None, 0), (1, 1), (10, 1), (11, 0), (60, 0)]:
+                with self.subTest(selected=selected):
+                    response = self.client.post('/api/transfers/query', json=body | dict(min_transfer_minutes=selected))
+                    self.assertEqual(response.status_code, 200)
+                    plans = response.json()['data']['plans']
+                    self.assertEqual(len(plans), count)
+                    if plans:
+                        connection = plans[0]['connections'][0]
+                        self.assertEqual(connection['required_minutes'], selected)
+                        self.assertEqual(connection['official_min_minutes'], 60)
+        finally:
+            app.dependency_overrides.clear()
 
     def test_two_transfers_across_midnight_through_real_gateway(self):
         from app.api.transfer_routes import get_transfer_planner
