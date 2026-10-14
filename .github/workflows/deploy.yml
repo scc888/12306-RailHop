@@ -49,28 +49,26 @@ jobs:
           HOST: ${{ secrets.SERVER_HOST }}
           USER: ${{ secrets.SERVER_USER }}
         run: |
-          echo "HOST length: ${#HOST}, USER length: ${#USER}, SSH_KEY length: ${#SSH_KEY}"
-          if [ -z "$HOST" ] || [ -z "$USER" ] || [ -z "$SSH_KEY" ]; then
-            echo "::error::One or more secrets (SERVER_HOST, SERVER_USER, SERVER_SSH_KEY) are missing or empty in GitHub Secrets!"
-            exit 1
-          fi
-
           mkdir -p ~/.ssh
           echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
           echo "" >> ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          echo "Checking deploy key fingerprint..."
-          ssh-keygen -lf ~/.ssh/deploy_key
+          FP=$(ssh-keygen -lf ~/.ssh/deploy_key 2>&1 || true)
+          echo "::notice title=Key Fingerprint::$FP"
+          echo "::notice title=Server Target::Connecting to ${USER}@${HOST}"
 
           PKG="12306-railhop-${PKG_TAG}.tar.gz"
           DIR="12306-railhop-${PKG_TAG}"
 
+          echo "Testing SSH connectivity..."
+          ssh -v -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=15 "${USER}@${HOST}" "echo 'SSH handshake OK'"
+
           echo "Uploading $PKG to server..."
-          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o BatchMode=yes "dist/$PKG" "${USER}@${HOST}:/root/$PKG"
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "dist/$PKG" "${USER}@${HOST}:/root/$PKG"
 
           echo "Executing deployment on server..."
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o BatchMode=yes "${USER}@${HOST}" "bash -s" << EOF
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${USER}@${HOST}" "bash -s" << EOF
             set -e
             cd /root
             echo "Extracting $PKG..."
