@@ -49,6 +49,12 @@ jobs:
           HOST: ${{ secrets.SERVER_HOST }}
           USER: ${{ secrets.SERVER_USER }}
         run: |
+          echo "HOST length: ${#HOST}, USER length: ${#USER}, SSH_KEY length: ${#SSH_KEY}"
+          if [ -z "$HOST" ] || [ -z "$USER" ] || [ -z "$SSH_KEY" ]; then
+            echo "::error::One or more secrets (SERVER_HOST, SERVER_USER, SERVER_SSH_KEY) are missing or empty in GitHub Secrets!"
+            exit 1
+          fi
+
           mkdir -p ~/.ssh
           echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
           echo "" >> ~/.ssh/deploy_key
