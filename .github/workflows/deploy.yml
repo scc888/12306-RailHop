@@ -43,30 +43,28 @@ jobs:
           python backend/scripts/build_release.py "$TAG"
           echo "PKG_TAG=$TAG" >> $GITHUB_ENV
 
-      - name: Upload Package to Server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: ${{ secrets.SERVER_PORT || 22 }}
-          source: "dist/12306-railhop-${{ env.PKG_TAG }}.tar.gz"
-          target: "/root"
-          strip_components: 1
+      - name: Deploy to Server via SSH
+        env:
+          SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          HOST: ${{ secrets.SERVER_HOST }}
+          USER: ${{ secrets.SERVER_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
 
-      - name: Execute Deploy Script on Server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: ${{ secrets.SERVER_PORT || 22 }}
-          script: |
+          PKG="12306-railhop-${PKG_TAG}.tar.gz"
+          DIR="12306-railhop-${PKG_TAG}"
+
+          echo "Uploading $PKG to server..."
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "dist/$PKG" "${USER}@${HOST}:/root/$PKG"
+
+          echo "Executing deployment on server..."
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "${USER}@${HOST}" "bash -s" << EOF
             set -e
             cd /root
-            PKG="12306-railhop-${{ env.PKG_TAG }}.tar.gz"
-            DIR="12306-railhop-${{ env.PKG_TAG }}"
             echo "Extracting $PKG..."
             tar -xzf "$PKG"
             cd "$DIR"
             bash deploy.sh
+          EOF
