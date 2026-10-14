@@ -49,19 +49,12 @@ jobs:
           HOST: ${{ secrets.SERVER_HOST }}
           USER: ${{ secrets.SERVER_USER }}
         run: |
-          mkdir -p ~/.ssh
-          echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
-          echo "" >> ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-
-          FP=$(ssh-keygen -lf ~/.ssh/deploy_key 2>&1 || true)
-          echo "::notice title=Key Fingerprint::$FP"
-          echo "::notice title=Server Target::Connecting to ${USER}@${HOST}"
+          python deploy/write_deploy_key.py
 
           PKG="12306-railhop-${PKG_TAG}.tar.gz"
           DIR="12306-railhop-${PKG_TAG}"
 
-          echo "Testing SSH connectivity..."
+          echo "Testing SSH connectivity to ${USER}@${HOST}..."
           ssh -v -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=15 "${USER}@${HOST}" "echo 'SSH handshake OK'"
 
           echo "Uploading $PKG to server..."
