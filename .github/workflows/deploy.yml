@@ -50,17 +50,21 @@ jobs:
           USER: ${{ secrets.SERVER_USER }}
         run: |
           mkdir -p ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          echo "" >> ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+
+          echo "Checking deploy key fingerprint..."
+          ssh-keygen -lf ~/.ssh/deploy_key
 
           PKG="12306-railhop-${PKG_TAG}.tar.gz"
           DIR="12306-railhop-${PKG_TAG}"
 
           echo "Uploading $PKG to server..."
-          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "dist/$PKG" "${USER}@${HOST}:/root/$PKG"
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o BatchMode=yes "dist/$PKG" "${USER}@${HOST}:/root/$PKG"
 
           echo "Executing deployment on server..."
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "${USER}@${HOST}" "bash -s" << EOF
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o BatchMode=yes "${USER}@${HOST}" "bash -s" << EOF
             set -e
             cd /root
             echo "Extracting $PKG..."
