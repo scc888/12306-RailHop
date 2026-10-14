@@ -1,4 +1,4 @@
-name: Deploy to Server
+name: Deploy to Server via Docker
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,28 +20,30 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install Frontend Dependencies & Build
+      - name: Test Frontend
         working-directory: frontend
         run: |
           npm install
           npm test
-          npm run build
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Run Backend Tests
+      - name: Test Backend
         run: |
           pip install -r backend/requirements.txt httpx
           python -m unittest discover -s backend -p "test_*.py"
 
-      - name: Build Deployment Package
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image
         run: |
-          TAG=$(date +'%Y%m%d%H%M%S')
-          python backend/scripts/build_release.py "$TAG"
-          echo "PKG_TAG=$TAG" >> $GITHUB_ENV
+          docker build -t 12306-railhop:latest .
+          docker save 12306-railhop:latest | gzip > /tmp/12306-railhop-image.tar.gz
+          ls -lh /tmp/12306-railhop-image.tar.gz
 
       - name: Deploy to Server via SSH
         env:
@@ -51,21 +53,58 @@ jobs:
         run: |
           python deploy/write_deploy_key.py
 
-          PKG="12306-railhop-${PKG_TAG}.tar.gz"
-          DIR="12306-railhop-${PKG_TAG}"
+          echo "Uploading Docker image to server..."
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null /tmp/12306-railhop-image.tar.gz "${USER}@${HOST}:/root/12306-railhop-image.tar.gz"
 
-          echo "Testing SSH connectivity to ${USER}@${HOST}..."
-          ssh -v -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=15 "${USER}@${HOST}" "echo 'SSH handshake OK'"
-
-          echo "Uploading $PKG to server..."
-          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "dist/$PKG" "${USER}@${HOST}:/root/$PKG"
-
-          echo "Executing deployment on server..."
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${USER}@${HOST}" "bash -s" << EOF
+          echo "Deploying container on server..."
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${USER}@${HOST}" "bash -s" << 'EOF'
             set -e
-            cd /root
-            echo "Extracting $PKG..."
-            tar -xzf "$PKG"
-            cd "$DIR"
-            bash deploy.sh
+
+            # 1. Stop host systemd service and clean host nginx config if present
+            if systemctl is-active --quiet railhop.service 2>/dev/null; then
+              echo "Stopping legacy host systemd railhop service..."
+              systemctl stop railhop.service
+              systemctl disable railhop.service || true
+            fi
+            if [ -f /etc/nginx/conf.d/railhop.conf ]; then
+              echo "Removing legacy host nginx railhop.conf..."
+              rm -f /etc/nginx/conf.d/railhop.conf
+              systemctl reload nginx || true
+            fi
+
+            # 2. Load docker image
+            echo "Loading Docker image..."
+            docker load < /root/12306-railhop-image.tar.gz
+            rm -f /root/12306-railhop-image.tar.gz
+
+            # 3. Stop old container if running
+            if [ "$(docker ps -aq -f name=12306-railhop)" ]; then
+              echo "Stopping old 12306-railhop container..."
+              docker stop 12306-railhop || true
+              docker rm 12306-railhop || true
+            fi
+
+            # 4. Start new container
+            echo "Starting new 12306-railhop container..."
+            docker run -d \
+              --name 12306-railhop \
+              --restart unless-stopped \
+              -p 8080:8080 \
+              12306-railhop:latest
+
+            # 5. Verify container health
+            echo "Verifying container health..."
+            sleep 3
+            for i in {1..30}; do
+              if curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1; then
+                echo "Container deployment successful and healthy!"
+                docker ps -f name=12306-railhop
+                exit 0
+              fi
+              sleep 1
+            done
+
+            echo "ERROR: Healthcheck timed out"
+            docker logs --tail 50 12306-railhop
+            exit 1
           EOF
