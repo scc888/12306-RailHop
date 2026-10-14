@@ -71,10 +71,30 @@ def build_package(release_date="20261014"):
     frontend_dist_dst = os.path.join(target_dir, "frontend", "dist")
     shutil.copytree(frontend_dist_src, frontend_dist_dst)
 
-    # 5. Copy templates & LICENSE
+    # 5. Copy templates, Docker configs & LICENSE
     shutil.copy2(os.path.join(ROOT_DIR, "LICENSE"), os.path.join(target_dir, "LICENSE"))
     shutil.copy2(os.path.join(deploy_dir, "nginx.conf.template"), os.path.join(target_dir, "nginx.conf.template"))
     shutil.copy2(os.path.join(deploy_dir, "railhop.service.template"), os.path.join(target_dir, "railhop.service.template"))
+    shutil.copy2(os.path.join(ROOT_DIR, "Dockerfile.runtime"), os.path.join(target_dir, "Dockerfile"))
+    shutil.copy2(os.path.join(ROOT_DIR, "docker-compose.yml"), os.path.join(target_dir, "docker-compose.yml"))
+    if os.path.exists(os.path.join(ROOT_DIR, ".dockerignore")):
+        shutil.copy2(os.path.join(ROOT_DIR, ".dockerignore"), os.path.join(target_dir, ".dockerignore"))
+
+    # Copy deploy directory files needed for Docker runtime
+    target_deploy_dir = os.path.join(target_dir, "deploy")
+    os.makedirs(target_deploy_dir, exist_ok=True)
+    shutil.copy2(os.path.join(deploy_dir, "docker-nginx.conf"), os.path.join(target_deploy_dir, "docker-nginx.conf"))
+    with open(os.path.join(deploy_dir, "docker-entrypoint.sh"), "r", encoding="utf-8") as f:
+        entrypoint_content = f.read().replace("\r\n", "\n")
+    with open(os.path.join(target_deploy_dir, "docker-entrypoint.sh"), "wb") as f:
+        f.write(entrypoint_content.encode("utf-8"))
+
+    # Copy deploy-docker.sh with LF line endings
+    deploy_docker_src = os.path.join(deploy_dir, "deploy-docker.sh")
+    with open(deploy_docker_src, "r", encoding="utf-8") as f:
+        deploy_docker_content = f.read().replace("\r\n", "\n")
+    with open(os.path.join(target_dir, "deploy-docker.sh"), "wb") as f:
+        f.write(deploy_docker_content.encode("utf-8"))
 
     # 6. Generate deploy.sh with LF
     deploy_src = os.path.join(deploy_dir, "deploy.sh")

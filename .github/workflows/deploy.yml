@@ -20,11 +20,12 @@ jobs:
         with:
           node-version: 20
 
-      - name: Test Frontend
+      - name: Build and Test Frontend
         working-directory: frontend
         run: |
           npm install
           npm test
+          npm run build
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -36,16 +37,13 @@ jobs:
           pip install -r backend/requirements.txt httpx
           python -m unittest discover -s backend -p "test_*.py"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Docker Image
+      - name: Package Release
         run: |
-          docker build -t 12306-railhop:latest .
-          docker save 12306-railhop:latest | gzip > /tmp/12306-railhop-image.tar.gz
-          ls -lh /tmp/12306-railhop-image.tar.gz
+          RELEASE_TAG=$(date +%Y%m%d%H%M%S)
+          python backend/scripts/build_release.py "$RELEASE_TAG"
+          ls -lh dist/
 
-      - name: Deploy to Server via SSH
+      - name: Deploy to Server via Docker
         env:
           SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
           HOST: ${{ secrets.SERVER_HOST }}
@@ -53,58 +51,37 @@ jobs:
         run: |
           python deploy/write_deploy_key.py
 
-          echo "Uploading Docker image to server..."
-          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null /tmp/12306-railhop-image.tar.gz "${USER}@${HOST}:/root/12306-railhop-image.tar.gz"
+          TARBALL=$(ls dist/12306-railhop-*.tar.gz | head -n1)
+          TARNAME=$(basename "$TARBALL")
+          echo "Uploading $TARNAME to server..."
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$TARBALL" "${USER}@${HOST}:/root/${TARNAME}"
 
-          echo "Deploying container on server..."
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${USER}@${HOST}" "bash -s" << 'EOF'
+          echo "Running remote Docker deployment on server..."
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${USER}@${HOST}" "bash -s" << EOF
             set -e
-
-            # 1. Stop host systemd service and clean host nginx config if present
-            if systemctl is-active --quiet railhop.service 2>/dev/null; then
-              echo "Stopping legacy host systemd railhop service..."
-              systemctl stop railhop.service
-              systemctl disable railhop.service || true
-            fi
-            if [ -f /etc/nginx/conf.d/railhop.conf ]; then
-              echo "Removing legacy host nginx railhop.conf..."
-              rm -f /etc/nginx/conf.d/railhop.conf
-              systemctl reload nginx || true
-            fi
-
-            # 2. Load docker image
-            echo "Loading Docker image..."
-            docker load < /root/12306-railhop-image.tar.gz
-            rm -f /root/12306-railhop-image.tar.gz
-
-            # 3. Stop old container if running
-            if [ "$(docker ps -aq -f name=12306-railhop)" ]; then
-              echo "Stopping old 12306-railhop container..."
-              docker stop 12306-railhop || true
-              docker rm 12306-railhop || true
-            fi
-
-            # 4. Start new container
-            echo "Starting new 12306-railhop container..."
-            docker run -d \
-              --name 12306-railhop \
-              --restart unless-stopped \
-              -p 8080:8080 \
-              12306-railhop:latest
-
-            # 5. Verify container health
-            echo "Verifying container health..."
-            sleep 3
-            for i in {1..30}; do
-              if curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1; then
-                echo "Container deployment successful and healthy!"
-                docker ps -f name=12306-railhop
-                exit 0
-              fi
-              sleep 1
-            done
-
-            echo "ERROR: Healthcheck timed out"
-            docker logs --tail 50 12306-railhop
-            exit 1
+            PKG_DIR="/root/${TARNAME%.tar.gz}"
+            mkdir -p "\$PKG_DIR"
+            tar -xzf "/root/$TARNAME" -C "\$PKG_DIR" --strip-components=1
+            cd "\$PKG_DIR"
+            bash deploy-docker.sh
+            rm -f "/root/$TARNAME"
           EOF
+
+      - name: Verify Public Accessibility
+        env:
+          HOST: ${{ secrets.SERVER_HOST }}
+        run: |
+          echo "Verifying public server health..."
+          for i in {1..15}; do
+            if curl -fsS "http://${HOST}:8080/health" > /dev/null 2>&1; then
+              echo "Public health check passed!"
+              curl -fsS "http://${HOST}:8080/health"
+              echo ""
+              curl -fsS "http://${HOST}:8080/api/stations/search?keyword=shanghai&limit=3"
+              echo ""
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "ERROR: Public health check failed after timeout"
+          exit 1
