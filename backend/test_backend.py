@@ -34,6 +34,7 @@ class TestBackendLogic(unittest.TestCase):
         self.assertTrue(any(s.name == "上海" for s in search_res))
         print(f"成功加载 {len(station_service.stations)} 个车站，检索 'shanghai' 匹配项: {[s.name for s in search_res]}")
 
+    @unittest.skipIf(os.getenv("CI") == "true", "Skip live 12306 query in CI")
     def test_02_direct_ticket_query(self):
         print("\n--- [测试 2: 真实 12306 直达余票查询] ---")
         train_date = self.train_date
@@ -49,6 +50,7 @@ class TestBackendLogic(unittest.TestCase):
         print(f"示例车次: {sample.train_code} | {sample.start_time} -> {sample.arrive_time} | 历时: {sample.duration}")
         print(f"席别情况: 二等座={sample.seats.ze}, 一等座={sample.seats.zy}, 商务座={sample.seats.swz}, 无座={sample.seats.wz}")
 
+    @unittest.skipIf(os.getenv("CI") == "true", "Skip live 12306 query in CI")
     def test_03_query_stops(self):
         print("\n--- [测试 3: 车次沿途经停站时刻表查询] ---")
         train_date = self.train_date
@@ -70,6 +72,7 @@ class TestBackendLogic(unittest.TestCase):
         for s in stops:
             print(f"  [{s.station_no}] {s.station_name} | 到: {s.arrive_time} | 开: {s.start_time} | 停: {s.stopover_time}")
 
+    @unittest.skipIf(os.getenv("CI") == "true", "Skip live 12306 query in CI")
     def test_04_smart_planner(self):
         print("\n--- [测试 4: 全程有票的同车接续算法] ---")
         train_date = self.train_date

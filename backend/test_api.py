@@ -43,6 +43,7 @@ class TestFastApiEndpoints(unittest.TestCase):
         print("搜索 'nanjing' 返回车站:", names)
         self.assertTrue(any("南京" in n for n in names))
 
+    @unittest.skipIf(os.getenv("CI") == "true", "Skip live 12306 query in CI")
     def test_03_ticket_query_api(self):
         print("\n--- [测试 API: 直达余票查询] ---")
         res = self.client.get(f"/api/tickets/query?train_date={self.train_date}&from_station=上海&to_station=北京")
@@ -54,6 +55,7 @@ class TestFastApiEndpoints(unittest.TestCase):
         self.assertIn("prices", first_train)
         print(f"查询上海->北京成功返回 {len(data)} 趟列车，首趟: {first_train['train_code']}，票价: {first_train['prices']}")
 
+    @unittest.skipIf(os.getenv("CI") == "true", "Skip live 12306 query in CI")
     def test_04_smart_plans_api(self):
         print("\n--- [测试 API: 智能推算方案] ---")
         # 查上海到北京
