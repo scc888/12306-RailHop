@@ -2,7 +2,7 @@
   <article class="journey-card" data-testid="journey-plan" :data-kind="plan.kind">
     <div class="plan-heading">
       <div>
-        <span class="kind-badge" :class="`kind-${plan.kind}`">{{ kindName }}</span><span v-if="rank===1" class="ml-2 text-xs text-slate-500">本次排序首选</span>
+        <span class="kind-badge" :class="`kind-${plan.kind}`">{{ kindName }}</span><span v-if="rank===1 && sortBy==='duration'" class="ml-2 text-xs text-slate-500">本次已查范围内最快</span>
         <h3 class="mt-3 text-lg font-bold text-slate-900">{{ plan.legs[0].from_station_name }} <span class="mx-1 text-slate-400">→</span> {{ plan.legs.at(-1).to_station_name }}</h3>
         <p class="mt-1 text-xs text-slate-600">{{ formatDateTime(plan.legs[0].departure_at) }} 出发 · {{ formatDateTime(plan.legs.at(-1).arrival_at) }} 到达</p>
       </div>
@@ -13,7 +13,17 @@
     </div>
     <div class="plan-trip-summary">
       <TrainFront class="w-4 h-4 shrink-0" aria-hidden="true" /><p>{{ tripSummary }}</p>
+      <button v-if="collapsible" type="button" class="plan-details-toggle" :aria-expanded="expanded" :aria-controls="detailsId" @click="expanded=!expanded">
+        {{ expanded ? '收起详情' : '展开详情' }}<ChevronDown class="w-4 h-4" :class="{'rotate-180':expanded}" aria-hidden="true" />
+      </button>
     </div>
+    <div class="px-5 pb-3 text-xs text-slate-600 space-y-1" data-testid="compact-facts">
+      <p class="font-semibold">{{ compact.route }}</p>
+      <p v-if="compact.wait">{{ compact.wait }}</p><p>{{ compact.seats }}</p>
+      <p v-if="compact.notes.length" class="text-amber-800">{{ compact.notes.join(' · ') }}</p>
+      <p v-if="baseline && baseline.id!==plan.id">比最快中转多 {{ plan.total_minutes-baseline.total_minutes }} 分钟 · 等待{{ waitDifference>=0 ? '多' : '少' }} {{ Math.abs(waitDifference) }} 分钟</p>
+    </div>
+    <div :id="detailsId" v-show="!collapsible || expanded">
     <div class="plan-itinerary">
       <div v-if="plan.route_assessment?.warnings?.length" class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950 mb-4"><p v-for="warning in plan.route_assessment.warnings" :key="warning">{{ warning }}</p><p class="mt-2">{{ plan.route_assessment.mode==='manual' ? '已按手动指定站查询' : '已按允许较大绕行查询' }} · 请结合经由站和全程含等待时间决定。</p></div>
       <ol class="journey-legs">
@@ -58,16 +68,22 @@
       <p class="fare-scope-note mt-2">各段列出本次可接受且有票的席别；可在“席别与中转设置”中调整范围。</p>
     </div>
     <div class="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-5 py-3 text-xs text-slate-500"><span>余票快照 {{ formatDateTime(plan.legs[0].queried_at) }} · 时刻不含晚点预测</span><button type="button" @click="copy" class="min-h-9 font-semibold text-blue-700 cursor-pointer">{{ copied ? '已复制路线' : '复制完整路线' }}</button></div><p v-if="copyError" role="alert" class="px-5 pb-3 text-xs text-amber-800">{{ copyError }}</p>
+    </div>
   </article>
 </template>
 <script setup>
-import {computed,ref,watch} from 'vue'
-import {ArrowRight,ArrowLeftRight,Route,TrainFront} from 'lucide-vue-next'
+import {computed,ref,watch,useId} from 'vue'
+import {ArrowRight,ArrowLeftRight,Route,TrainFront,ChevronDown} from 'lucide-vue-next'
 import SeatFareOptions from './SeatFareOptions.vue'
 import {calculateFare,formatMoney,formatDateTime} from '../lib/transfer.js'
-import {journeyKinds,formatJourneyDuration,buildJourneyText,sameTrainReminder,journeyDayLabel} from '../lib/journey.js'
-const props=defineProps({plan:{type:Object,required:true},rank:Number})
-defineEmits(['seat-change'])
+import {journeyKinds,formatJourneyDuration,buildJourneyText,sameTrainReminder,journeyDayLabel,compactJourneyFacts} from '../lib/journey.js'
+const props=defineProps({plan:{type:Object,required:true},rank:Number,sortBy:String,baseline:Object,expanded:Boolean})
+const emit=defineEmits(['seat-change','update:expanded'])
+const detailsId=useId()
+const expanded=computed({get:()=>props.expanded,set:value=>emit('update:expanded',value)})
+const collapsible=computed(()=>props.plan.kind==='same_train' || props.plan.kind==='transfer')
+const compact=computed(()=>compactJourneyFacts(props.plan))
+const waitDifference=computed(()=>(props.plan.connections || []).reduce((n,c)=>n+c.wait_minutes,0)-(props.baseline?.connections || []).reduce((n,c)=>n+c.wait_minutes,0))
 const fare=computed(()=>calculateFare(props.plan.legs,props.plan.selected_seat_codes))
 const kindName=computed(()=>journeyKinds.find(k=>k.code===props.plan.kind)?.name)
 const tripSummary=computed(()=>props.plan.kind==='same_train' ? `全程乘坐 ${props.plan.legs[0].train_code} · 分 ${props.plan.legs.length} 段接续` : props.plan.kind==='transfer' ? `同站换车 ${props.plan.connections.length} 次 · 共 ${props.plan.legs.length} 段行程` : `乘坐 ${props.plan.legs[0].train_code} 直达`)

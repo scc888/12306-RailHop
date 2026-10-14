@@ -154,4 +154,32 @@ class StationService:
         self.ensure_loaded()
         return self.code_to_name.get(code, code)
 
+    def station_scope(self, anchor_code: str) -> dict:
+        """Expose the official city group with a smaller, editable initial choice.
+
+        Names only inform initial selection; they never establish city membership
+        or claim that a station is geographically central.
+        """
+        choices = self.city_stations(anchor_code)
+        anchor = next((s for s in choices if s.telecode == anchor_code), None)
+        if anchor is None:
+            raise ValueError('无法识别车站，请从站点提示中选择')
+        city = anchor.city_name or anchor.name
+        aliases = {'武汉': {'汉口', '武昌'}}.get(city, set())
+        defaults = [s.telecode for s in choices if s.telecode == anchor_code
+                    or s.name.startswith(city) or s.name in aliases]
+        return dict(city_name=city, stations=choices, default_station_codes=defaults)
+
+    def resolve_scope(self, anchor_code: str, scope: str, selected=None) -> set[str]:
+        choices = self.city_stations(anchor_code)
+        if not choices:
+            raise ValueError('无法识别车站，请从站点提示中选择')
+        allowed = {s.telecode for s in choices} if scope == 'city' else {anchor_code}
+        if selected is None:
+            return allowed
+        values = set(selected)
+        if not values or anchor_code not in values or not values.issubset(allowed):
+            raise ValueError('所选车站不属于当前范围，请重新选择出发和到达车站')
+        return values
+
 station_service = StationService()

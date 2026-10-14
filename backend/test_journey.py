@@ -154,8 +154,13 @@ class JourneyTests(unittest.TestCase):
         self.assertEqual(self.service.search(self.request(mode='direct'),now=late).direct.plans,[])
 
     def test_failed_direct_is_not_confirmed_no_ticket_and_transfer_can_continue(self):
-        self.client.query_tickets_strict.side_effect=RailwayQueryError('failed')
-        result=self.service.search(self.request(),now=NOW)
+        failure=RailwayQueryError('private-error-value')
+        failure.diagnostic_id='diagnostic-123'
+        self.client.query_tickets_strict.side_effect=failure
+        with self.assertLogs('app.services.journey_service',level='WARNING') as captured:
+            result=self.service.search(self.request(),now=NOW)
+        self.assertIn('diagnostic_id=diagnostic-123',captured.output[0])
+        self.assertNotIn('private-error-value','\n'.join(captured.output))
         self.assertEqual(result.direct.meta.status,'upstream_error')
         self.assertEqual(result.same_train.meta.status,'upstream_error')
         self.transfer.search.assert_called_once()

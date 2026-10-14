@@ -17,6 +17,7 @@ const group=(plans=[])=>({plans,meta:{status:'complete',notices:[]}});
       await page.route('**/api/stations/search?**',r=>r.fulfill({json:{code:200,data:[
         {name:'上海',telecode:'SHH',city_code:'sh',city_name:'上海'},
         {name:'北京',telecode:'BJP',city_code:'bj',city_name:'北京'}]}}));
+      await page.route('**/api/stations/scope?**',r=>{const code=new URL(r.request().url()).searchParams.get('station_code'),name=code==='SHH'?'上海':'北京';return r.fulfill({json:{code:200,data:{stations:[{name,telecode:code}],default_station_codes:[code]}}})});
       await page.route('**/api/journeys/query',r=>{
         const body=r.request().postDataJSON();requests.push(body);
         const at=time=>`${body.train_date}T${time}:00+08:00`;

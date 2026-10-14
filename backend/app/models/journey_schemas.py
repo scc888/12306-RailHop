@@ -1,7 +1,7 @@
 """One read-only request and consistent plans for all journey types."""
 from datetime import date, datetime
 from typing import Literal
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from .transfer_schemas import TransferQueryRequest, TransferPlan, TransferLeg
 from .schemas import TrainTicketInfo
 
@@ -25,10 +25,18 @@ class JourneyTrain(TrainTicketInfo):
 class JourneyQueryRequest(TransferQueryRequest):
     from_scope: Literal['station', 'city'] = 'city'
     to_scope: Literal['station', 'city'] = 'city'
-    mode: Literal['auto','all','direct','same_train','transfer'] = 'auto'
+    mode: Literal['auto','all','direct','same_train','transfer','fastest'] = 'auto'
     max_same_train_segments: int = Field(2, ge=2, le=3)
     include_short_fallback: bool = False
     selected_train: SelectedTrain | None = None
+
+    @model_validator(mode='after')
+    def validate_fastest(self):
+        if self.mode == 'fastest':
+            if self.selected_train is not None:
+                raise ValueError('最快中转比较所有出发车次，请取消指定首程车次')
+            self.sort_by = 'duration'
+        return self
 
 
 class JourneyPlan(TransferPlan):

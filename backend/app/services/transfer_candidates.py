@@ -31,12 +31,41 @@ class TransferCandidateDiscovery:
         groups.sort(key=lambda values: values[0][0])
         return [values[0][1] for values in groups[:limit]]
 
-    def find(self, request, origins, destinations, run, *, first_train=None, max_probes=4, max_trains=8):
+    def find(self, request, origins, destinations, run, *, first_train=None, initial_tickets=None,
+             max_probes=4, max_trains=8):
         sources = {}
+        routes = []
+        route_signatures = set()
         excluded = origins | destinations
         seen_trains = set()
+        origin_queries = ([request.from_station] + sorted(origins - {request.from_station})
+            if getattr(request, 'from_station_codes', None) is not None else [request.from_station])
+        destination_queries = ([request.to_station] + sorted(destinations - {request.to_station})
+            if getattr(request, 'to_station_codes', None) is not None else [request.to_station])
         self.stations.directory.ensure_loaded()
         code_by_name = self.stations.directory.name_to_code
+
+        def ranked_sources():
+            # Take an early stop from each distinct route before spending the
+            # candidate cap on all stops of the first inspected train.
+            ordered = {}
+            for position in range(max((len(route) for route in routes), default=0)):
+                for route in routes:
+                    if position < len(route) and route[position] in sources:
+                        code = route[position]
+                        ordered.setdefault(code, sources[code])
+            ordered.update(sources)
+            return ordered
+
+        def timetable_rank(ticket):
+            try:
+                hours, minutes = map(int, ticket.duration.split(':'))
+                duration = hours * 60 + minutes
+                if duration <= 0 or not 0 <= minutes < 60:
+                    raise ValueError()
+            except (AttributeError, TypeError, ValueError):
+                duration = float('inf')
+            return duration, ticket.start_time, ticket.train_code
 
         def add(code, source):
             if code in excluded or code not in self.stations.directory.code_to_name:
@@ -47,7 +76,7 @@ class TransferCandidateDiscovery:
                 sources[code].append(source)
 
         def inspect(day, tickets, allowed_origins, allowed_destinations, *, selected=False):
-            for ticket in tickets or []:
+            for ticket in sorted(tickets or [], key=timetable_rank):
                 high = ticket.train_code[:1].upper() in ('G', 'D', 'C')
                 if ((request.train_type == 'high_speed' and not high) or
                         (request.train_type == 'regular' and high)):
@@ -70,7 +99,12 @@ class TransferCandidateDiscovery:
                         continue
                     # Only actual intermediate stops of the queried interval. Selected
                     # train discovery must never extend beyond its destination.
-                    for code in codes[codes.index(a)+1:codes.index(b)]:
+                    intermediate = codes[codes.index(a)+1:codes.index(b)]
+                    signature = tuple(intermediate)
+                    if signature not in route_signatures:
+                        routes.append(intermediate)
+                        route_signatures.add(signature)
+                    for code in intermediate:
                         add(code, 'train_stops')
                         if selected:
                             add(code, 'selected_train_stops')
@@ -79,21 +113,32 @@ class TransferCandidateDiscovery:
 
         if first_train is not None:
             inspect(request.train_date, [first_train], origins, destinations, selected=True)
-            if request.transfer_count == 1:
-                return sources
+            if (getattr(request, 'max_transfers', None) or request.transfer_count) == 1:
+                return ranked_sources()
+        elif initial_tickets is not None:
+            # JourneyService already queried these public ticket rows across
+            # the selected endpoint pairs. Rank the complete pool before the
+            # limited stop inspections; supplied empty results still skip the
+            # repeated direct queries and retain direction probing below.
+            inspect(request.train_date, initial_tickets, origins, destinations)
         else:
-            direct = run('candidate_trains', request.train_date, request.from_station, request.to_station,
-                lambda timeout: self.gateway.candidate_trains(request.train_date, request.from_station, request.to_station, timeout))
-            inspect(request.train_date, direct, origins, destinations)
+            for a in origin_queries:
+                for b in destination_queries:
+                    direct = run('candidate_trains', request.train_date, a, b,
+                        lambda timeout, a=a, b=b: self.gateway.candidate_trains(request.train_date, a, b, timeout))
+                    if direct is None:
+                        return ranked_sources()
+                    inspect(request.train_date, direct, origins, destinations)
         # Probe both sides even without a direct train, so discovery is not limited
         # to the stops of trains that already connect the complete journey.
         for code in self.seeds(excluded, max_probes):
             add(code, 'direction_probe')
-            for a, b, starts, ends in [(request.from_station, code, origins, {code}),
-                                      (code, request.to_station, {code}, destinations)]:
+            pairs = [(a, code, origins, {code}) for a in origin_queries]
+            pairs += [(code, b, {code}, destinations) for b in destination_queries]
+            for a, b, starts, ends in pairs:
                 trains = run('candidate_trains', request.train_date, a, b,
                     lambda timeout, a=a, b=b: self.gateway.candidate_trains(request.train_date, a, b, timeout))
                 if trains is None:
-                    return sources
+                    return ranked_sources()
                 inspect(request.train_date, trains, starts, ends)
-        return sources
+        return ranked_sources()

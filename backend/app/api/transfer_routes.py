@@ -33,7 +33,9 @@ def query_transfers(request: TransferQueryRequest, planner=Depends(get_transfer_
         station_service.ensure_loaded()
         if any(code not in station_service.code_to_name for code in (request.from_station, request.to_station)):
             raise ValueError('无法识别出发站或到达站，请从站点列表选择')
-        return ApiResponse(data=planner.search(request,route_policy=RoutePolicy(
+        origins = station_service.resolve_scope(request.from_station, request.from_scope, request.from_station_codes)
+        destinations = station_service.resolve_scope(request.to_station, request.to_scope, request.to_station_codes)
+        return ApiResponse(data=planner.search(request, origin_codes=origins, destination_codes=destinations, route_policy=RoutePolicy(
             request.from_station,request.to_station,station_service,
             allow_large_detour=request.allow_large_detour,required=request.ordered_via_stations)))
     except (ValueError, OverflowError) as exc:

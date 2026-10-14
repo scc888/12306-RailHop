@@ -10,6 +10,7 @@ async function mocks(page){
   const requests=[];
   await page.route('**/api/transfers/stations?**',r=>r.fulfill({json:{code:200,data:catalog}}));
   await page.route('**/api/stations/search?**',r=>r.fulfill({json:stationResponse}));
+  await page.route('**/api/stations/scope?**',r=>{const code=new URL(r.request().url()).searchParams.get('station_code'),station=stationResponse.data.find(s=>s.telecode===code);return r.fulfill({json:{code:200,data:{stations:[station],default_station_codes:[code]}}})});
   await page.route('**/api/journeys/query',r=>{
     const body=r.request().postDataJSON(),day=body.train_date;
     requests.push(body);
@@ -137,7 +138,7 @@ async function shot(page,name){
     await page.getByText('席别与中转设置',{exact:true}).click();
     await page.getByRole('checkbox',{name:'按各站官方参考换乘时间'}).uncheck();
     await page.getByRole('spinbutton',{name:'个人最少时间（分钟）'}).fill('10');
-    await page.getByRole('combobox',{name:'同站换乘次数'}).selectOption('2');
+    await page.getByRole('combobox',{name:'最多换乘'}).selectOption('2');
     await page.getByRole('combobox',{name:'第1个指定中转站'}).fill('郑州东');
     await page.getByRole('combobox',{name:'方案排序'}).selectOption('price');
     await page.getByRole('checkbox',{name:'无座',exact:true}).check();
@@ -147,7 +148,7 @@ async function shot(page,name){
     assert.equal(await page.locator('#journey-from').inputValue(),'北京');assert.equal(await page.locator('#journey-to').inputValue(),'上海');
     assert.equal(await page.getByRole('combobox',{name:'出发范围',exact:true}).inputValue(),'station');
     assert.equal(await page.getByRole('spinbutton',{name:'个人最少时间（分钟）'}).inputValue(),'10');
-    assert.equal(await page.getByRole('combobox',{name:'同站换乘次数'}).inputValue(),'2');
+    assert.equal(await page.getByRole('combobox',{name:'最多换乘'}).inputValue(),'2');
     assert.equal(await page.getByRole('combobox',{name:'第1个指定中转站'}).inputValue(),'郑州东');
     assert.equal(await page.getByRole('combobox',{name:'方案排序'}).inputValue(),'price');
     assert.equal(await page.getByRole('checkbox',{name:'无座',exact:true}).isChecked(),true);

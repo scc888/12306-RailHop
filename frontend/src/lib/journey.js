@@ -29,6 +29,33 @@ export function journeyDayLabel(value, departure) {
   return days===1 ? '次日' : days>1 ? `第${days+1}天` : ''
 }
 
+export function endpointSelection(scope,saved,input,mode,anchor) {
+  if(mode==='station')return [anchor]
+  const known=new Set(scope.stations.map(s=>s.telecode))
+  const codes=saved?.input===input && Array.isArray(saved.codes) ? saved.codes : scope.default_station_codes
+  return [...new Set(codes.filter(code=>known.has(code)))]
+}
+
+export function endpointRequest(anchor,codes) {
+  if(!codes.length)throw Error('出发和到达范围都须至少选择一个实际车站')
+  return {anchor:codes.includes(anchor)?anchor:codes[0],codes:[...codes]}
+}
+
+export function compactJourneyFacts(plan) {
+  const first=plan.legs[0],last=plan.legs.at(-1),connections=plan.connections || []
+  const route=[first.from_station_name,...plan.legs.map(leg=>leg.to_station_name)].join(' → ')
+  const wait=connections.map(c=>`${c.station.station_name} 等待 ${c.wait_minutes} 分钟`).join(' · ')
+  const seats=plan.legs.map((leg,i)=>`${leg.train_code} ${leg.seats.find(s=>s.code===plan.selected_seat_codes[i])?.name || '席别待确认'}`).join(' / ')
+  const notes=[]
+  const day=journeyDayLabel(last.arrival_at,first.departure_at)
+  if(day)notes.push(`${day}到达`)
+  connections.forEach((c,i)=>{
+    if(!c.station.convenient_transfer_confirmed)notes.push(`${c.station.station_name}便捷换乘未核实`)
+    if(plan.legs[i].arrival_at.slice(0,10)!==plan.legs[i+1].departure_at.slice(0,10))notes.push(`${c.station.station_name}跨夜候车`)
+  })
+  return {route,wait,seats,notes}
+}
+
 export function shanghaiDate(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now)
   const value = key => parts.find(p=>p.type===key).value

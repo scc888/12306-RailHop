@@ -17,7 +17,8 @@ const dictionary=[{name:'上海',telecode:'SHH',city_name:'上海',city_code:'sh
       // A failed convenience catalogue must not disable all-dictionary via lookup.
       await page.route('**/api/transfers/stations?**',route=>route.fulfill({status:503,json:{detail:'unavailable'}}));
       await page.route('**/api/stations/search?**',route=>route.fulfill({json:{code:200,data:dictionary}}));
-      await page.route('**/api/journeys/query',route=>{
+      await page.route('**/api/stations/scope?**',r=>{const code=new URL(r.request().url()).searchParams.get('station_code'),station=dictionary.find(s=>s.telecode===code);return r.fulfill({json:{code:200,data:{stations:[station],default_station_codes:[code]}}})});
+  await page.route('**/api/journeys/query',route=>{
         const body=route.request().postDataJSON();requests.push(body);
         const at=time=>`${body.train_date}T${time}:00+08:00`;
         const plan=structuredClone(seed);plan.id='unknown-via';plan.kind='transfer';
@@ -38,6 +39,7 @@ const dictionary=[{name:'上海',telecode:'SHH',city_name:'上海',city_code:'sh
       const via=page.locator('#via-0');await via.fill('合肥南');
       await page.getByRole('button',{name:'查询车次',exact:true}).click();
       await page.getByRole('button',{name:'不限定车次，查全部路线',exact:true}).click();
+      await page.getByRole('button',{name:'展开详情',exact:true}).click();
       await page.getByText('便捷换乘状态未核实，可能需要出站重新安检进站；请核对通道开放时段和检票截止时间。',{exact:true}).waitFor();
       assert.deepEqual(requests.at(-1).ordered_via_stations,['ENH']);
       assert.match(await page.locator('[data-testid="journey-connection"]').innerText(),/至少 60 分钟/);

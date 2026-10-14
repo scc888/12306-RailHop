@@ -1,0 +1,27 @@
+# Managed by railhop deployment
+[Unit]
+Description=12306 RailHop FastAPI backend
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=railhop
+Group=railhop
+WorkingDirectory=/opt/12306-railhop/current/backend
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=TZ=Asia/Shanghai
+Environment=DEBUG=false
+ExecStart=/opt/12306-railhop/current/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port __BACKEND_PORT__ --workers 1 --timeout-keep-alive 10
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/12306-railhop/current/backend/data
+
+[Install]
+WantedBy=multi-user.target

@@ -12,8 +12,12 @@ class TransferQueryRequest(BaseModel):
     to_station: str = Field(pattern=r'^[A-Z]{3}$')
     from_scope: Literal['station', 'city'] = 'station'
     to_scope: Literal['station', 'city'] = 'station'
+    from_station_codes: list[str] | None = Field(None, max_length=100)
+    to_station_codes: list[str] | None = Field(None, max_length=100)
     train_date: date
     transfer_count: int = Field(1, ge=1, le=3)
+    # Optional maximum for the new journey flow; legacy transfer_count stays exact.
+    max_transfers: int | None = Field(None, ge=1, le=3)
     # None selects each station's official reference; an explicit value overrides it.
     min_transfer_minutes: int | None = Field(None, ge=1, le=1440)
     ordered_via_stations: list[str] = Field(default_factory=list)
@@ -27,13 +31,24 @@ class TransferQueryRequest(BaseModel):
         via = self.ordered_via_stations
         if self.from_station == self.to_station:
             raise ValueError('出发站和到达站不能相同')
-        if len(via) > self.transfer_count or len(via) != len(set(via)):
+        if len(via) > (self.max_transfers or self.transfer_count) or len(via) != len(set(via)):
             raise ValueError('指定中转站数量超过中转次数，或存在重复站')
         if any(code in (self.from_station, self.to_station) or len(code) != 3 or not code.isascii() or not code.isupper() or not code.isalpha() for code in via):
             raise ValueError('指定中转站必须是不同于起终点的有效电报码')
         if not self.allowed_seats or any(code not in SEAT_NAMES for code in self.allowed_seats):
             raise ValueError('请选择有效席别')
         self.allowed_seats = list(dict.fromkeys(self.allowed_seats))
+        for field, anchor, scope in [('from_station_codes', self.from_station, self.from_scope),
+                                     ('to_station_codes', self.to_station, self.to_scope)]:
+            values = getattr(self, field)
+            if values is None:
+                continue
+            if not values or any(len(code) != 3 or not code.isascii() or not code.isalpha()
+                                 or not code.isupper() for code in values):
+                raise ValueError('请选择有效的出发和到达车站，车站范围不能为空')
+            if anchor not in values or (scope == 'station' and set(values) != {anchor}):
+                raise ValueError('车站范围必须包含所选车站，单站查询只能选择该站')
+            setattr(self, field, list(dict.fromkeys(values)))
         return self
 
 

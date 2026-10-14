@@ -10,6 +10,7 @@ from typing import List, Dict, Optional, Tuple
 from ..config import settings
 from ..models.schemas import TrainTicketInfo, TrainSeatInfo, TrainStopInfo
 from .station_service import station_service
+from .railway_diagnostics import RailwayDiagnostics
 
 urllib3.disable_warnings()
 logger = logging.getLogger(__name__)
@@ -38,19 +39,23 @@ class Ticket12306Client:
         """访问初始化页面获取会话基础 Cookie (若已存在有效 Cookie 则复用)"""
         if self._initialized and not force and "JSESSIONID" in self.session.cookies:
             return
+        diagnostics = RailwayDiagnostics(logger, 'session_init', force=force, strict=strict)
+        diagnostics.begin('session_init', settings.INIT_URL)
         try:
             response = self.session.get(
                 settings.INIT_URL,
                 verify=True if strict else False,
                 timeout=timeout_seconds or settings.REQUEST_TIMEOUT
             )
+            diagnostics.context['has_jsessionid'] = 'JSESSIONID' in self.session.cookies
+            diagnostics.observe(response, logging.INFO if response.status_code == 200 else logging.WARNING)
             if strict and response.status_code != 200:
                 raise RailwayQueryError('铁路查询会话初始化失败')
             self._initialized = True
         except Exception as e:
+            diagnostics.failure(e)
             if strict:
                 raise RailwayQueryError('铁路查询会话初始化失败，请稍后重试') from e
-            logger.warning(f"Session init failed: {e}")
 
     def resolve_c_url(self, train_date: str, from_code: str, to_code: str) -> str:
         """动态探测 12306 当前有效的查询接口路径 (如 leftTicket/queryG)"""
@@ -96,6 +101,8 @@ class Ticket12306Client:
     def query_tickets_strict(self, train_date: str, from_code: str, to_code: str,
                              purpose_codes: str = 'ADULT', timeout_seconds: float = None) -> List[TrainTicketInfo]:
         deadline = time.monotonic() + (timeout_seconds or settings.REQUEST_TIMEOUT)
+        diagnostics = RailwayDiagnostics(logger, 'tickets', date=train_date, from_station=from_code, to_station=to_code)
+        diagnostics.begin('tickets_session_init', settings.INIT_URL)
 
         def remaining():
             value = deadline - time.monotonic()
@@ -113,6 +120,7 @@ class Ticket12306Client:
         try:
             self.ensure_init(timeout_seconds=remaining(), strict=True)
             target_url = f"{settings.BASE_12306_URL}/{self._cached_c_url}"
+            diagnostics.begin('tickets_request', target_url)
             res = self.session.get(
                 target_url,
                 params=params,
@@ -120,16 +128,24 @@ class Ticket12306Client:
                 allow_redirects=False,
                 timeout=remaining()
             )
+            redirected = res.status_code == 302
+            diagnostics.observe(res, logging.WARNING if redirected else logging.DEBUG)
             # 若返回 302，重新初始化 Cookie 并重新探测 c_url
-            if res.status_code == 302:
+            if redirected:
+                diagnostics.begin('tickets_session_refresh', settings.INIT_URL)
                 self.ensure_init(force=True, timeout_seconds=remaining(), strict=True)
+                diagnostics.begin('tickets_probe', settings.QUERY_PROBE_URL)
                 probe = self.session.get(settings.QUERY_PROBE_URL, params=params, verify=True,
                                          allow_redirects=False, timeout=remaining())
+                diagnostics.observe(probe)
+                diagnostics.stage = 'tickets_probe_parse_json'
                 new_c_url = probe.json().get('c_url', '')
+                diagnostics.stage = 'tickets_probe_path'
                 if not re.fullmatch(r'leftTicket/query[A-Za-z]*', new_c_url):
                     raise RailwayQueryError('铁路查询路径暂不可用，请稍后重试')
                 self._cached_c_url = new_c_url
                 target_url = f"{settings.BASE_12306_URL}/{new_c_url}"
+                diagnostics.begin('tickets_retry', target_url)
                 res = self.session.get(
                     target_url,
                     params=params,
@@ -137,28 +153,44 @@ class Ticket12306Client:
                     allow_redirects=False,
                     timeout=remaining()
                 )
+                diagnostics.observe(res)
 
+            diagnostics.stage = 'tickets_http_status'
             if res.status_code != 200:
                 raise RailwayQueryError(f'铁路余票查询返回 HTTP {res.status_code}，请稍后重试')
 
+            diagnostics.stage = 'tickets_parse_json'
             res_json = res.json()
+            diagnostics.parsed(res_json)
+            diagnostics.stage = 'tickets_business_status'
             if not isinstance(res_json, dict) or res_json.get('status') is not True:
                 raise RailwayQueryError('铁路余票查询暂不可用，请稍后重试')
 
+            diagnostics.stage = 'tickets_schema'
             data = res_json.get("data", {})
             if not isinstance(data, dict) or not isinstance(data.get('result'), list):
                 raise RailwayQueryError('铁路余票查询响应格式异常，请稍后重试')
             raw_results = data['result']
+            diagnostics.stage = 'tickets_rows'
             if any(not isinstance(item, str) or len(item.split('|')) < 35 for item in raw_results):
                 raise RailwayQueryError('铁路余票数据不完整，请稍后重试')
             station_map = data.get("map", {})
 
-            return self._parse_ticket_results(raw_results, station_map)
+            tickets = self._parse_ticket_results(raw_results, station_map)
+            if redirected:
+                diagnostics.stage = 'tickets_complete'
+                diagnostics.recovered()
+            return tickets
 
-        except RailwayQueryError:
+        except RailwayQueryError as e:
+            diagnostics.failure(e)
+            e.diagnostic_id = diagnostics.request_id
             raise
         except Exception as e:
-            raise RailwayQueryError('铁路余票查询失败，请稍后重试') from e
+            diagnostics.failure(e)
+            failure = RailwayQueryError('铁路余票查询失败，请稍后重试')
+            failure.diagnostic_id = diagnostics.request_id
+            raise failure from e
 
     def _parse_ticket_results(
         self,
@@ -351,6 +383,8 @@ class Ticket12306Client:
                 return cached_stops
 
         deadline = time.monotonic() + (timeout_seconds or settings.REQUEST_TIMEOUT)
+        diagnostics = RailwayDiagnostics(logger, 'stops', date=depart_date, from_station=from_code, to_station=to_code)
+        diagnostics.begin('stops_session_init', settings.INIT_URL)
 
         def remaining():
             value = deadline - time.monotonic()
@@ -366,17 +400,24 @@ class Ticket12306Client:
         }
         try:
             self.ensure_init(timeout_seconds=remaining(), strict=True)
+            diagnostics.begin('stops_request', settings.STOPS_QUERY_URL)
             res = self.session.get(
                 settings.STOPS_QUERY_URL,
                 params=params,
                 verify=True,
                 timeout=remaining()
             )
+            diagnostics.observe(res)
+            diagnostics.stage = 'stops_http_status'
             if res.status_code != 200:
                 raise RailwayQueryError('铁路时刻表暂不可用，请稍后重试')
+            diagnostics.stage = 'stops_parse_json'
             payload = res.json()
+            diagnostics.parsed(payload)
+            diagnostics.stage = 'stops_business_status'
             if not isinstance(payload, dict) or payload.get('status') is not True:
                 raise RailwayQueryError('铁路时刻表查询未成功，请稍后重试')
+            diagnostics.stage = 'stops_schema'
             data = payload.get('data', {}).get('data')
             if not isinstance(data, list) or any(not isinstance(item, dict) or
                     not item.get('station_no') or not item.get('station_name') for item in data):
@@ -389,9 +430,11 @@ class Ticket12306Client:
                 if len(self._stops_cache) > 256:
                     del self._stops_cache[next(iter(self._stops_cache))]
             return stops
-        except RailwayQueryError:
+        except RailwayQueryError as e:
+            diagnostics.failure(e)
             raise
         except Exception as e:
+            diagnostics.failure(e)
             raise RailwayQueryError('铁路时刻表查询失败，请稍后重试') from e
 
 client_12306 = Ticket12306Client()

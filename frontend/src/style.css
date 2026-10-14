@@ -107,6 +107,8 @@ button:disabled { cursor: not-allowed; }
 .train-seat.seat-available small { color: #047857; font-weight: 600; }
 .sort-scope { font-size: calc(14px * var(--ui-font-scale)); color: #64748b; }
 .plan-trip-summary { display: flex; align-items: center; gap: 9px; padding: 12px 20px; border-bottom: 1px solid #e2e8f0; font-size: calc(15px * var(--ui-font-scale)); color: #334155; }
+.plan-trip-summary > p { min-width: 0; }
+.plan-details-toggle { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; min-height: 36px; margin: -6px 0 -6px auto; color: #1d4ed8; font-weight: 600; }
 .plan-itinerary { padding: 20px; }
 .journey-legs { padding: 0; margin: 0; list-style: none; }
 .journey-legs > li + li { margin-top: 20px; }

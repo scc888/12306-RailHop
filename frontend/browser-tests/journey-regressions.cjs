@@ -68,6 +68,17 @@ function sample(body,scenario){
 }
 async function shot(page,name){const dir=process.env.SCREENSHOT_DIR;if(dir){fs.mkdirSync(dir,{recursive:true});await page.screenshot({path:path.join(dir,`${name}.png`),fullPage:true});}}
 async function noOverflow(page){assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'horizontal overflow');}
+async function openPlan(card){
+  const toggle=card.getByRole('button',{name:'展开详情',exact:true});
+  assert.equal(await toggle.getAttribute('aria-expanded'),'false');
+  assert.equal(await card.getByTestId('journey-leg').first().isVisible(),false,'segment details are initially collapsed');
+  assert.equal(await card.getByTestId('fare-summary').isVisible(),false);
+  assert.equal(await card.getByRole('button',{name:'复制完整路线',exact:true}).isVisible(),false);
+  assert.equal(await card.getByTestId('total-price').isVisible(),true,'the summary fare remains visible');
+  await toggle.click();
+  assert.equal(await card.getByRole('button',{name:'收起详情',exact:true}).getAttribute('aria-expanded'),'true');
+  await card.getByTestId('journey-leg').first().waitFor({state:'visible'});
+}
 async function trainFare(row,name,price){
   const tile=row.locator('.train-seat').filter({hasText:name});
   await tile.waitFor({state:'visible'});assert.match(await tile.innerText(),new RegExp(price.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
@@ -92,6 +103,7 @@ async function legFares(card,index,{missing=false}={}){
     try{
       await page.route('**/api/transfers/stations?**',r=>r.fulfill({json:{code:200,data:catalog}}));
       await page.route('**/api/stations/search?**',r=>r.fulfill({json:stationResponse}));
+      await page.route('**/api/stations/scope?**',r=>{const code=new URL(r.request().url()).searchParams.get('station_code');const station=stationResponse.data.find(s=>s.telecode===code);return r.fulfill({json:{code:200,data:{city_name:station?.city_name || station?.name,stations:[station],default_station_codes:[code]}}})});
       await page.route('**/api/journeys/query',r=>{const body=r.request().postDataJSON();bodies.push(body);if(scenario==='error'&&body.selected_train)return r.fulfill({status:400,json:{detail:'所选车次已变化，请重新查询车次后选择'}});if(['switch_train','collapse'].includes(scenario)&&body.selected_train?.train_no==='physical-G1'){pending.push({route:r,body});return;}return r.fulfill({json:sample(body,scenario)});});
       await page.goto(process.env.BROWSER_URL || 'http://127.0.0.1:5173');
       if(await page.getByRole('button',{name:'修改条件',exact:true}).isVisible())await page.getByRole('button',{name:'修改条件',exact:true}).click();
@@ -108,7 +120,7 @@ async function legFares(card,index,{missing=false}={}){
         const personalTime=page.getByRole('spinbutton',{name:'个人最少时间（分钟）'});
         await personalTime.fill('10');
         assert.equal(await personalTime.evaluate(input=>input.checkValidity()),true,'personal time below 15 minutes can be submitted');
-        await page.getByRole('combobox',{name:'同站换乘次数'}).selectOption('2');
+        await page.getByRole('combobox',{name:'最多换乘'}).selectOption('2');
         await page.getByRole('combobox',{name:'第1个指定中转站'}).fill('南京南');
         await page.getByRole('combobox',{name:'方案排序'}).selectOption('price');
         await page.getByText('席别与中转设置',{exact:true}).click();
@@ -169,6 +181,10 @@ async function legFares(card,index,{missing=false}={}){
             assert.deepEqual(bodies[1].selected_train,sample(bodies[0],scenario).data.trains.find(t=>t.train_code===code).selection);
             if(segmentScenarios.includes(scenario)){
               const card=row.getByTestId('journey-plan').first();
+              await card.scrollIntoViewIfNeeded();
+              await shot(page,`plan-collapsed-${scenario}`);
+              if(process.env.SCREENSHOT_DIR)await card.screenshot({path:path.join(process.env.SCREENSHOT_DIR,`plan-collapsed-${scenario}-card.png`)});
+              await openPlan(card);
               const phase=process.env.SEGMENT_BASELINE==='1'?'before':'after';
               await shot(page,`segment-${phase}-${scenario}`);
               if(process.env.SCREENSHOT_DIR)await card.screenshot({path:path.join(process.env.SCREENSHOT_DIR,`segment-${phase}-${scenario}-plan.png`)});
@@ -186,6 +202,11 @@ async function legFares(card,index,{missing=false}={}){
                 assert.match(await connections.nth(0).innerText(),/天津西/);assert.match(await connections.nth(0).innerText(),/硬卧\s*→\s*硬座/);assert.match(await connections.nth(1).innerText(),/南京/);
                 assert.equal(await card.getByTestId('total-price').innerText(),'¥290.50');
                 await card.getByRole('radio',{name:'第1段席别 软卧',exact:true}).check();assert.equal(await card.getByTestId('total-price').innerText(),'¥325.50');assert.match(await connections.nth(0).innerText(),/软卧\s*→\s*硬座/);
+                await card.getByRole('button',{name:'收起详情',exact:true}).click();
+                assert.equal(await legs.first().isVisible(),false);
+                assert.equal(await card.getByTestId('total-price').innerText(),'¥325.50','collapse keeps the selected fare in the summary');
+                const toggle=card.getByRole('button',{name:'展开详情',exact:true});await toggle.focus();await toggle.press('Enter');
+                assert.equal(await card.getByRole('radio',{name:'第1段席别 软卧',exact:true}).isChecked(),true,'reopening keeps the selected seat');
                 assert.match(await card.getByTestId('fare-summary').innerText(),/¥104\.50\s*\+\s*¥128\.50\s*\+\s*¥92\.50/);assert.match(await card.getByTestId('fare-summary').innerText(),/¥325\.50/);
                 const singleTile=legs.nth(1).locator('.fare-option');assert.equal(await singleTile.count(),1);const tileBox=await singleTile.boundingBox();assert.ok(tileBox.width<=340,`single seat option should not stretch across desktop (${tileBox.width}px)`);
                 await card.getByRole('radio',{name:'第1段席别 硬卧',exact:true}).check();
@@ -196,8 +217,10 @@ async function legFares(card,index,{missing=false}={}){
             if(fareScenarios.includes(scenario)){
               const cards=row.getByTestId('journey-plan');assert.equal(await cards.count(),2);
               const first=cards.nth(0),collapsed=cards.nth(1),missing=scenario==='missing_fares';
+              await openPlan(first);
+              assert.equal(await collapsed.getByTestId('journey-leg').first().isVisible(),false,'each plan expands independently');
+              await openPlan(collapsed);
               for(const card of [first,collapsed]){await legFares(card,1,{missing});await legFares(card,2);}
-              assert.equal(await collapsed.getByRole('button',{name:/查看分段(?:席别与)?详情|收起分段详情/}).count(),0,'essential segment information is always visible');
               await collapsed.getByTestId('journey-leg').first().getByRole('heading',{level:4}).waitFor({state:'visible'});
               await legFares(first,1,{missing});await legFares(first,2);
               assert.equal(await first.getByTestId('total-price').innerText(),missing?'票价待确认':'¥247');
@@ -210,7 +233,7 @@ async function legFares(card,index,{missing=false}={}){
               assert.equal(await first.getByTestId('total-price').innerText(),'¥323.50');
               assert.equal(await collapsed.getByRole('radio',{name:'第1段席别 二等座',exact:true}).isChecked(),true,'native radio groups are independent across plans');
               await collapsed.getByRole('radio',{name:'第1段席别 一等座',exact:true}).check();
-              assert.equal(await collapsed.getByTestId('total-price').innerText(),'¥323.50','a collapsed plan remains selectable');
+              assert.equal(await collapsed.getByTestId('total-price').innerText(),'¥323.50','an expanded plan remains selectable');
               assert.equal(await first.getByRole('radio',{name:'第1段席别 一等座',exact:true}).isChecked(),true);
               await collapsed.getByRole('radio',{name:'第1段席别 二等座',exact:true}).check();
               await first.getByRole('button',{name:/复制完整路线|已复制路线/}).click();
@@ -223,7 +246,7 @@ async function legFares(card,index,{missing=false}={}){
             }
             if(scenario==='selected_transfer'){
               await row.getByRole('button',{name:'站内中转 1'}).click();
-              const card=row.getByTestId('journey-plan'),connection=card.getByTestId('journey-connection');await connection.waitFor({state:'visible'});
+              const card=row.getByTestId('journey-plan'),connection=card.getByTestId('journey-connection');await openPlan(card);await connection.waitFor({state:'visible'});
               const text=await connection.innerText();assert.match(text,/南京南/);assert.match(text,/同站换车/);assert.match(text,/等待\s*15\s*分钟/);assert.match(text,/G1\s*→\s*G2/);
               const details=connection.locator('details');assert.equal(await details.getAttribute('open'),null);assert.equal(await connection.getByRole('link',{name:'便捷换乘资料来源',exact:true}).isVisible(),false);
               await connection.getByText('换乘资料及适用条件',{exact:true}).click();await connection.getByRole('link',{name:'便捷换乘资料来源',exact:true}).waitFor({state:'visible'});
@@ -232,12 +255,14 @@ async function legFares(card,index,{missing=false}={}){
             }
             if(scenario==='sort_preserves'){
               const cards=row.getByTestId('journey-plan');assert.equal(await cards.count(),3);
-              const original=cards.filter({has:page.getByRole('radio',{name:'第1段席别 一等座',exact:true})}).filter({hasText:'¥247'});assert.equal(await original.count(),1);
+              const original=cards.filter({hasText:'¥247'});assert.equal(await original.count(),1);await openPlan(original);
               await original.getByRole('radio',{name:'第1段席别 一等座',exact:true}).check();
               const selectedPlan=cards.filter({hasText:'¥323.50'});assert.equal(await selectedPlan.count(),1);
               const before=bodies.length;await page.getByRole('combobox',{name:'方案排序',exact:true}).selectOption('price');
               assert.equal(await page.getByTestId('train-row').count(),3);assert.equal(await cards.count(),3,'sort keeps expanded plans');assert.equal(await cards.first().getByTestId('total-price').innerText(),'¥100');
               assert.equal(await selectedPlan.getByRole('radio',{name:'第1段席别 一等座',exact:true}).isChecked(),true,'sort keeps selected seats');
+              assert.equal(await selectedPlan.getByRole('button',{name:'收起详情',exact:true}).getAttribute('aria-expanded'),'true','sort keeps expansion state');
+              assert.equal(await cards.first().getByTestId('journey-leg').first().isVisible(),false,'sort keeps other plans collapsed');
               await page.getByRole('combobox',{name:'方案排序',exact:true}).selectOption('arrival');assert.equal(await cards.first().getByTestId('total-price').innerText(),'¥600');
               await page.getByRole('combobox',{name:'方案排序',exact:true}).selectOption('duration');assert.equal(await cards.first().getByTestId('total-price').innerText(),'¥323.50');
               assert.equal(bodies.length,before,'sorting is local and never re-queries');
@@ -253,7 +278,7 @@ async function legFares(card,index,{missing=false}={}){
             }
             if(scenario==='seats_settings'){
               assert.equal(bodies[0].min_transfer_minutes,10);assert.equal(bodies[1].min_transfer_minutes,10);assert.equal(bodies[1].transfer_count,2);assert.deepEqual(bodies[1].ordered_via_stations,['NKH']);assert.equal(bodies[1].sort_by,'price');
-              const card=row.getByTestId('journey-plan');await card.getByRole('radio',{name:'第1段席别 一等座',exact:true}).check();assert.equal(await card.getByTestId('total-price').innerText(),'¥323.50');
+              const card=row.getByTestId('journey-plan');await openPlan(card);await card.getByRole('radio',{name:'第1段席别 一等座',exact:true}).check();assert.equal(await card.getByTestId('total-price').innerText(),'¥323.50');
               await card.getByRole('button',{name:'复制完整路线'}).click();assert.match(await page.evaluate(()=>navigator.clipboard.readText()),/¥323.50/);
             }
             if(scenario==='expanded'){
@@ -261,9 +286,14 @@ async function legFares(card,index,{missing=false}={}){
               await page.route('**/api/journeys/query',r=>{const body=r.request().postDataJSON();bodies.push(body);return r.fulfill({json:sample(body,body.allow_large_detour?'expanded':'fallback')});});
               await row.getByRole('button',{name:'重新查询方案'}).click();await row.getByRole('button',{name:'允许较大绕行并重查'}).click();
               await row.getByTestId('journey-plan').first().waitFor();assert.equal(bodies.at(-1).allow_large_detour,true);assert.equal(bodies.at(-1).selected_train.train_no,'physical-G1');
-              await row.getByRole('button',{name:'站内中转 1'}).click();await row.getByText('此路线可能明显绕行或等待较长，请核对经由站和全程耗时。',{exact:true}).waitFor();
+              await row.getByRole('button',{name:'站内中转 1'}).click();await openPlan(row.getByTestId('journey-plan'));await row.getByText('此路线可能明显绕行或等待较长，请核对经由站和全程耗时。',{exact:true}).waitFor();
             }
-            if(['desktop','mobile'].includes(scenario)){await row.getByRole('button',{name:'站内中转 1'}).click();await shot(page,`train-ui-after-${scenario}-selected`);}
+            if(['desktop','mobile'].includes(scenario)){
+              await row.getByRole('button',{name:'站内中转 1'}).click();
+              const card=row.getByTestId('journey-plan');await card.scrollIntoViewIfNeeded();
+              await shot(page,`train-ui-after-${scenario}-selected`);
+              if(process.env.SCREENSHOT_DIR)await card.screenshot({path:path.join(process.env.SCREENSHOT_DIR,`plan-collapsed-transfer-${scenario}-card.png`)});
+            }
           }
         }
       }

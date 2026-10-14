@@ -29,6 +29,101 @@ def ticket(a, b, train, start='08:00', arrive='09:00', seat='有'):
 
 
 class DynamicTransferTests(unittest.TestCase):
+    def test_reused_direct_candidates_prioritize_fast_train_across_actual_endpoints(self):
+        stations = directory()
+        stations._parse_station_text('@a|Start|AAA|start|s|0|a|Start'
+            '@ab|StartSouth|AAB|south|s|0|a|Start@b|Middle|BBB|middle|m|0|b|Middle'
+            '@z|End|ZZZ|end|e|0|z|End@zy|EndSouth|ZZY|south|s|0|z|End')
+        slow = [ticket('AAA','ZZZ',f'K{i}',start='08:00',arrive='20:00') for i in range(8)]
+        for item in slow:
+            item.duration = '12:00'
+        fast = ticket('AAB','ZZY','G99',start='10:00',arrive='12:00')
+        fast.duration = '02:00'
+        outside_scope = ticket('XXX','ZZZ','G100')
+        railway = Ticket12306Client()
+        railway.query_tickets_strict = Mock(return_value=[])
+        inspected = []
+        def stops(train,*args,**kwargs):
+            inspected.append(train)
+            return [TrainStopInfo(station_no=str(i),station_name=name,arrive_time='--',
+                start_time='--',stopover_time='--') for i,name in enumerate(['StartSouth','Middle','EndSouth'],1)]
+        railway.query_train_stops_strict = Mock(side_effect=stops)
+        request = TransferQueryRequest(from_station='AAA',to_station='ZZZ',train_date='2026-10-10',
+            from_scope='city',to_scope='city',from_station_codes=['AAA','AAB'],to_station_codes=['ZZZ','ZZY'])
+        result = TransferPlanner(TransferStationService(entries=[],directory=stations),
+            TransferTicketGateway(railway),limits={'request_interval':0,'discovery_probes':0,
+                'discovery_trains':1,'max_queries':1}).search(request,now=NOW,
+                    candidate_tickets=slow+[fast,outside_scope])
+        self.assertEqual(result.meta.candidate_station_codes,['BBB'])
+        self.assertEqual(inspected,['G99'])
+        self.assertEqual(railway.query_tickets_strict.call_count,0)
+        self.assertEqual(result.meta.query_count,1)
+        self.assertIn('query_limit',result.meta.truncation_reasons)
+
+    def test_empty_reused_direct_candidates_still_probe_directions_without_requery(self):
+        railway = Ticket12306Client()
+        railway.query_tickets_strict = Mock(return_value=[])
+        result = TransferPlanner(self.stations(),TransferTicketGateway(railway),limits={
+            'request_interval':0,'discovery_probes':1,'max_queries':2}).search(
+                self.request(ordered_via_stations=[]),now=NOW,candidate_tickets=[])
+        pairs = [(call.args[1],call.args[2]) for call in railway.query_tickets_strict.call_args_list]
+        self.assertEqual(pairs,[('AAA','BBB'),('BBB','ZZZ')])
+        self.assertIn('direction_probe',result.meta.candidate_sources['BBB'])
+        self.assertEqual(result.meta.query_count,2)
+
+    def test_discovery_queries_explicit_alternate_actual_endpoints(self):
+        stations = directory()
+        stations._parse_station_text('@a|Start|AAA|start|s|0|a|Start'
+            '@ab|StartSouth|AAB|south|s|0|a|Start@b|Middle|BBB|middle|m|0|b|Middle'
+            '@z|End|ZZZ|end|e|0|z|End@zy|EndSouth|ZZY|south|s|0|z|End')
+        railway = Ticket12306Client()
+        railway.query_tickets_strict = Mock(side_effect=lambda day,a,b,**kwargs:
+            [ticket('AAB','ZZY','G1')] if (a,b)==('AAB','ZZY') else [])
+        railway.query_train_stops_strict = Mock(return_value=[TrainStopInfo(station_no=str(i),
+            station_name=name,arrive_time='--',start_time='--',stopover_time='--')
+            for i,name in enumerate(['StartSouth','Middle','EndSouth'],1)])
+        request = TransferQueryRequest(from_station='AAA',to_station='ZZZ',train_date='2026-10-10',
+            from_scope='city',to_scope='city',from_station_codes=['AAA','AAB'],to_station_codes=['ZZZ','ZZY'])
+        result = TransferPlanner(TransferStationService(entries=[],directory=stations),
+            TransferTicketGateway(railway),limits={'request_interval':0,'discovery_probes':0}).search(request,now=NOW)
+        self.assertEqual(result.meta.candidate_station_codes,['BBB'])
+
+    def test_discovery_inspects_fast_timetabled_train_before_input_order(self):
+        railway = Ticket12306Client()
+        slow = ticket('AAA','ZZZ','G1',start='08:00',arrive='16:00')
+        slow.duration = '08:00'
+        fast = ticket('AAA','ZZZ','G2',start='10:00',arrive='12:00')
+        fast.duration = '02:00'
+        railway.query_tickets_strict = Mock(side_effect=lambda day,a,b,**kwargs:
+            [slow,fast] if (a,b)==('AAA','ZZZ') else [])
+        def stops(train,*args,**kwargs):
+            names = ['Start', 'Middle' if train=='G1' else 'Probe', 'End']
+            return [TrainStopInfo(station_no=str(i),station_name=name,arrive_time='--',
+                start_time='--',stopover_time='--') for i,name in enumerate(names,1)]
+        railway.query_train_stops_strict = Mock(side_effect=stops)
+        result = TransferPlanner(self.stations(),TransferTicketGateway(railway),limits={
+            'request_interval':0,'discovery_probes':0,'discovery_trains':1}).search(
+                self.request(ordered_via_stations=[]),now=NOW)
+        self.assertEqual(result.meta.candidate_station_codes,['CCC'])
+
+    def test_candidate_cap_keeps_stops_from_distinct_train_routes(self):
+        stations = directory()
+        stations._parse_station_text('@a|Start|AAA|start|s|0|a|Start'
+            '@b|FirstSlow|BBB|first|f|0|b|One@c|SecondSlow|BBC|second|s|0|c|Two'
+            '@d|FastOther|YYY|other|o|0|d|Three@z|End|ZZZ|end|e|0|z|End')
+        railway = Ticket12306Client()
+        railway.query_tickets_strict = Mock(side_effect=lambda day,a,b,**kwargs:
+            [ticket('AAA','ZZZ','G1'),ticket('AAA','ZZZ','G2')] if (a,b)==('AAA','ZZZ') else [])
+        def stops(train,*args,**kwargs):
+            names = ['Start','FirstSlow','SecondSlow','End'] if train=='G1' else ['Start','FastOther','End']
+            return [TrainStopInfo(station_no=str(i),station_name=name,arrive_time='--',
+                start_time='--',stopover_time='--') for i,name in enumerate(names,1)]
+        railway.query_train_stops_strict = Mock(side_effect=stops)
+        result = TransferPlanner(TransferStationService(entries=[],directory=stations),
+            TransferTicketGateway(railway),limits={'request_interval':0,'discovery_probes':0,
+                'max_candidates':2}).search(self.request(ordered_via_stations=[]),now=NOW)
+        self.assertEqual(set(result.meta.candidate_station_codes), {'BBB','YYY'})
+
     def stations(self):
         return TransferStationService(entries=[], directory=directory())
 

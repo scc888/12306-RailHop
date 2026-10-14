@@ -25,6 +25,13 @@ def search_stations(
     results = station_service.search(keyword, limit=limit)
     return ApiResponse(data=results)
 
+@router.get('/stations/scope', response_model=ApiResponse[dict])
+def station_scope(station_code: str = Query(..., pattern=r'^[A-Z]{3}$')):
+    try:
+        return ApiResponse(data=station_service.station_scope(station_code))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
 @router.get("/tickets/query", response_model=ApiResponse[List[TrainTicketInfo]])
 def query_tickets(
     train_date: str = Query(..., description="乘车日期, 如 2026-10-10"),

@@ -45,7 +45,7 @@ export function sortPlans(plans, sortBy) {
       const diff = Date.parse(a.legs.at(-1).arrival_at) - Date.parse(b.legs.at(-1).arrival_at)
       if (diff) return diff
     }
-    return a.total_minutes - b.total_minutes || a.id.localeCompare(b.id)
+    return a.total_minutes - b.total_minutes || (a.connections?.length ?? a.legs.length-1)-(b.connections?.length ?? b.legs.length-1) || a.id.localeCompare(b.id)
   })
 }
 

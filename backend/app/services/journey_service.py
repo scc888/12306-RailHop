@@ -10,6 +10,7 @@ from .client_12306 import RailwayQueryError
 from .transfer_ticket_gateway import CST, ticket_to_leg
 from .transfer_planner import TransferPlanner
 from .route_policy import RoutePolicy
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -28,35 +29,48 @@ class JourneyService:
         deadline = time.monotonic() + 60
         started = time.monotonic()
         logger.info('Journey query started: mode=%s, date=%s, type=%s, transfers=%s, expanded=%s, short_fallback=%s',
-            request.mode,request.train_date,request.train_type,request.transfer_count,request.allow_large_detour,request.include_short_fallback)
+            request.mode,request.train_date,request.train_type,request.max_transfers or request.transfer_count,request.allow_large_detour,request.include_short_fallback)
         if not now.date() <= request.train_date <= now.date() + timedelta(days=14):
             raise ValueError('出发日期须在 15 天预售范围内（含今天）')
         self.stations.ensure_loaded()
         by_code = {s.telecode:s for s in self.stations.stations}
         if request.from_station not in by_code or request.to_station not in by_code:
             raise ValueError('无法识别出发地或目的地，请从站点提示中选择')
-        origins = {s.telecode for s in self.stations.city_stations(request.from_station)} if request.from_scope == 'city' else {request.from_station}
-        destinations = {s.telecode for s in self.stations.city_stations(request.to_station)} if request.to_scope == 'city' else {request.to_station}
+        from_selection, to_selection = request.from_station_codes, request.to_station_codes
+        if request.mode == 'fastest':
+            if from_selection is None and request.from_scope == 'city':
+                from_selection = self.stations.station_scope(request.from_station)['default_station_codes']
+            if to_selection is None and request.to_scope == 'city':
+                to_selection = self.stations.station_scope(request.to_station)['default_station_codes']
+        origins = self.stations.resolve_scope(request.from_station, request.from_scope, from_selection)
+        destinations = self.stations.resolve_scope(request.to_station, request.to_scope, to_selection)
         if origins & destinations:
             raise ValueError('出发地与目的地范围重叠，请选择不同城市或具体车站')
+        if request.selected_train and (request.selected_train.from_station not in origins
+                                      or request.selected_train.to_station not in destinations):
+            raise ValueError('所选车次不在当前出发和到达范围内，请重新查询车次后选择')
         # Validate supplied interchange constraints even when auto mode would skip transfer.
         self.transfer.stations.validate_via(request.ordered_via_stations) if hasattr(self.transfer,'stations') else None
         if any(c in origins | destinations for c in request.ordered_via_stations):
             raise ValueError('指定中转站不能属于所选起点或终点范围')
         scope = dict(from_label=self._label(by_code[request.from_station],request.from_scope),
             to_label=self._label(by_code[request.to_station],request.to_scope),
-            origin_station_codes=sorted(origins),destination_station_codes=sorted(destinations))
+            origin_station_codes=sorted(origins),destination_station_codes=sorted(destinations),
+            origin_station_names={code:by_code[code].name for code in sorted(origins)},
+            destination_station_names={code:by_code[code].name for code in sorted(destinations)},
+            mode=request.mode, max_transfers=request.max_transfers)
         groups = {key:JourneyGroup(meta=JourneyGroupMeta(status='skipped')) for key in ('direct','same_train','transfer')}
-        city_partial = len(origins) > 1 or len(destinations) > 1
+        explicit_pairs = from_selection is not None or to_selection is not None
+        city_partial = (len(origins) > 1 or len(destinations) > 1) and not explicit_pairs
         coverage = ['城市范围依据12306字典，接纳代表站查询返回的同城车站；未逐一遍历全部站对。'] if city_partial else []
         candidates, direct_failed, unverified_anchor = [], False, False
         trains, selected = [], None
         if request.mode != 'transfer' or request.include_short_fallback or request.selected_train:
             group = groups['direct']
-            group.meta = JourneyGroupMeta(status='partial' if city_partial else 'complete',notices=list(coverage),query_count=1)
+            group.meta = JourneyGroupMeta(status='partial' if city_partial else 'complete',notices=list(coverage))
             try:
-                tickets = self.client.query_tickets_strict(request.train_date.isoformat(),request.from_station,
-                    request.to_station,timeout_seconds=min(8,max(.001,deadline-time.monotonic())))
+                tickets = self._direct_tickets(request, origins, destinations, deadline, group.meta,
+                                              explicit_pairs=explicit_pairs)
                 seen = set()
                 for ticket in tickets:
                     if (ticket.from_station_telecode not in origins or ticket.to_station_telecode not in destinations
@@ -90,7 +104,9 @@ class JourneyService:
                         continue
                     if leg and leg.departure_at >= now:
                         group.plans.append(self._plan([leg],[],'direct'))
-            except RailwayQueryError:
+            except RailwayQueryError as exc:
+                logger.warning('Journey direct query failed: date=%s, from=%s, to=%s, diagnostic_id=%s',
+                    request.train_date, request.from_station, request.to_station, getattr(exc, 'diagnostic_id', '-'))
                 direct_failed=True
                 group.meta.status='upstream_error'
                 group.meta.notices.append('直达铁路接口查询失败，不能据此判断无票。')
@@ -110,10 +126,12 @@ class JourneyService:
                 and p.legs[0].to_station == selected.selection.to_station]
             logger.info('Train-specific journey query: matched=%s, candidates=%s',bool(selected),len(candidates))
         groups['direct'].plans=self._top(groups['direct'].plans,request.sort_by,groups['direct'].meta)
-        need_alternatives = request.mode in ('all','same_train','transfer') or (request.mode=='auto' and not groups['direct'].plans)
+        need_alternatives = request.mode in ('all','same_train','transfer','fastest') or (request.mode=='auto' and not groups['direct'].plans)
         if request.mode in ('auto','all','same_train') and need_alternatives:
             group=groups['same_train']
-            group.meta=JourneyGroupMeta(status='complete',notices=list(coverage))
+            anchor_partial = groups['direct'].meta.status == 'partial'
+            group.meta=JourneyGroupMeta(status='partial' if anchor_partial else 'complete',
+                notices=list(coverage) + (groups['direct'].meta.notices if anchor_partial else []))
             if unverified_anchor:
                 group.meta.status='partial'
                 group.meta.notices.append('部分列车缺少可核对的运行日期或完整时刻，接续尚未验证。')
@@ -151,7 +169,7 @@ class JourneyService:
                 if city_partial and group.meta.status=='complete':
                     group.meta.status='partial'
                 group.plans=self._top(group.plans,request.sort_by,group.meta)
-        if request.mode in ('auto','all','transfer') and need_alternatives:
+        if request.mode in ('auto','all','transfer','fastest') and need_alternatives:
             group=groups['transfer']
             remaining=deadline-time.monotonic()-(8 if request.include_short_fallback else 0)
             if request.selected_train and direct_failed:
@@ -161,7 +179,12 @@ class JourneyService:
                 group.meta=JourneyGroupMeta(status='partial',notices=['查询已达到总时间上限，中转尚未完成。'])
             else:
                 anchor_options = {'first_train':selected} if selected else {}
-                found=self.transfer.search(TransferQueryRequest(**request.model_dump()),now=now,
+                if request.mode == 'fastest' and not direct_failed:
+                    anchor_options['candidate_tickets'] = candidates
+                transfer_values = request.model_dump()
+                if request.mode == 'fastest':
+                    transfer_values.update(from_station_codes=sorted(origins), to_station_codes=sorted(destinations))
+                found=self.transfer.search(TransferQueryRequest(**transfer_values),now=now,
                     origin_codes=origins,destination_codes=destinations,budget_seconds=remaining,
                     route_policy=RoutePolicy(request.from_station,request.to_station,self.stations,
                         allow_large_detour=request.allow_large_detour,required=request.ordered_via_stations),
@@ -178,11 +201,16 @@ class JourneyService:
                 if found.meta.failed_pairs:
                     details['notices'].append(f'{len(found.meta.failed_pairs)} 个区间查询失败或数据异常，不能视为确定无票。')
                 details['notices'].append('便捷换乘资料仅作参考，不限制指定站及动态候选范围；参考时间为采集快照。')
+                details['notices'].append('按首程出发至最终到达的总耗时比较，包含中间等待；结果是本次已查范围内的路线。')
+                if request.max_transfers is not None:
+                    details['notices'].append(f'本次比较 1 至 {request.max_transfers} 次同站换乘，指定站须按顺序经过。')
                 group.meta=JourneyGroupMeta(**details)
                 group.plans=[JourneyPlan(**p.model_dump(),kind='transfer') for p in found.plans]
         short_group=ShortTicketGroup()
         if request.include_short_fallback and not any(g.plans for g in groups.values()):
-            short_group.meta=JourneyGroupMeta(status='partial' if city_partial else 'complete',notices=list(coverage))
+            anchor_partial = groups['direct'].meta.status == 'partial'
+            short_group.meta=JourneyGroupMeta(status='partial' if city_partial or anchor_partial else 'complete',
+                notices=list(coverage) + (groups['direct'].meta.notices if anchor_partial else []))
             if unverified_anchor:
                 short_group.meta.status='partial'
                 short_group.meta.notices.append('部分列车运行日期或时刻无法核对，相关补票备选尚未验证。')
@@ -225,6 +253,46 @@ class JourneyService:
             time.monotonic()-started,{k:(g.meta.status,len(g.plans)) for k,g in groups.items()},len(short_group.options))
         return JourneyResult(**groups,trains=trains,selected_train=request.selected_train,
             short_fallback=short_group,queried_at=now,scope=scope)
+
+    def _direct_tickets(self, request, origins, destinations, deadline, meta, *, explicit_pairs):
+        """Bound the comparison separately so it cannot consume transfer-search time."""
+        starts = [request.from_station] + sorted(origins - {request.from_station})
+        ends = [request.to_station] + sorted(destinations - {request.to_station})
+        pairs = [(a, b) for _, a, b in sorted((i+j, a, b)
+            for i, a in enumerate(starts) for j, b in enumerate(ends))] if explicit_pairs else [
+                (request.from_station, request.to_station)]
+        if request.selected_train:
+            # Refresh the selected physical boarding interval directly; other
+            # city pairs cannot prove that this particular train is stale.
+            pairs = [(request.selected_train.from_station, request.selected_train.to_station)]
+        stop_at = min(deadline, time.monotonic() + 8)
+        tickets, errors, successes = [], [], 0
+        for index, (a, b) in enumerate(pairs):
+            if index >= 12 or time.monotonic() >= stop_at:
+                meta.status = 'partial'
+                meta.notices.append('直达对照尚未覆盖全部所选车站组合，可单独查询车次。')
+                break
+            if index:
+                time.sleep(min(settings.TRANSFER_REQUEST_INTERVAL, max(0, stop_at-time.monotonic())))
+            remaining = stop_at-time.monotonic()
+            if remaining <= 0:
+                meta.status = 'partial'
+                meta.notices.append('直达对照尚未覆盖全部所选车站组合，可单独查询车次。')
+                break
+            meta.query_count += 1
+            try:
+                tickets.extend(self.client.query_tickets_strict(request.train_date.isoformat(), a, b,
+                    timeout_seconds=min(3 if len(pairs)>1 else 8, remaining)))
+                successes += 1
+            except RailwayQueryError as exc:
+                errors.append(exc)
+                logger.warning('Journey direct pair failed: diagnostic_id=%s', getattr(exc, 'diagnostic_id', '-'))
+        if errors:
+            if not successes:
+                raise errors[0]
+            meta.status = 'partial'
+            meta.notices.append('部分直达区间查询失败，不能据此判断所有直达车次无票。')
+        return tickets
 
     @staticmethod
     def _label(station,scope):

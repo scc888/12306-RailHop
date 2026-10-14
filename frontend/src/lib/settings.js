@@ -7,7 +7,7 @@ export function createDefaultSettings(today) {
   return {fromText:'上海',toText:'北京',fromScope:'city',toScope:'city',trainDate:today,
     trainType:'all',sortBy:'duration',trainSort:'departure',allowedSeats:[...defaultSeatCodes],
     transferCount:1,maxSameSegments:2,officialTime:true,minMinutes:15,viaTexts:[''],
-    allowLargeDetour:false,advancedOpen:false}
+    allowLargeDetour:false,advancedOpen:false,fromSelection:null,toSelection:null}
 }
 
 function normalizeSettings(value,today) {
@@ -40,6 +40,12 @@ function normalizeSettings(value,today) {
   if(Array.isArray(value.viaTexts)){
     const stations=value.viaTexts.filter(station=>typeof station==='string' && station.length<=100).slice(0,normalized.transferCount)
     if(stations.length)normalized.viaTexts=stations
+  }
+  for(const side of ['from','to']){
+    const saved=value[`${side}Selection`]
+    if(saved?.input===normalized[`${side}Text`] && Array.isArray(saved.codes)){
+      normalized[`${side}Selection`]={input:saved.input,codes:[...new Set(saved.codes.filter(code=>typeof code==='string' && /^[A-Z]{3}$/.test(code)))]}
+    }
   }
   return normalized
 }
