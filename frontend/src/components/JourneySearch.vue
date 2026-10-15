@@ -2,16 +2,23 @@
   <div class="journey-workspace">
   <div v-if="isNarrow && settingsOpen" class="settings-backdrop" aria-hidden="true" @click="closeSettings" />
   <aside id="journey-settings" ref="settingsPanel" class="journey-card settings-panel" :class="{'settings-panel-open':settingsOpen}" :role="isNarrow && settingsOpen ? 'dialog' : 'complementary'" :aria-modal="isNarrow && settingsOpen ? true : undefined" aria-labelledby="search-heading" tabindex="-1" @keydown="settingsKeydown">
-    <form ref="settingsForm" @submit.prevent="search('direct')">
-      <div class="search-title settings-heading"><div><h1 id="search-heading">查询设置</h1><p>调整行程，查车次与接续方案</p></div><button v-if="isNarrow" type="button" class="settings-close" aria-label="关闭查询设置" @click="closeSettings"><X class="w-5 h-5" /></button></div>
+    <form ref="settingsForm" novalidate @submit.prevent="submitQuery('direct')">
+      <div class="search-title settings-heading"><div><h1 id="search-heading">查询设置</h1><p>选好地点和日期，就可以出发</p></div><button v-if="isNarrow" type="button" class="settings-close" aria-label="关闭查询设置" @click="closeSettings"><X class="w-5 h-5" /></button></div>
       <div class="settings-scroll">
+      <p v-if="formError" role="alert" class="notice-box text-rose-900 bg-rose-50 border-rose-200 mb-4">{{ formError }}</p>
       <div class="search-main-grid">
-        <div><label for="journey-from" class="journey-label">出发地</label><input id="journey-from" v-model="fromText" list="journey-from-list" @input="suggest('from')" @focus="suggest('from')" class="journey-input" placeholder="城市或完整车站名" required autocomplete="off" /><datalist id="journey-from-list"><option v-for="s in suggestions.from" :key="s.telecode" :value="s.name">{{ s.city_name }} · {{ s.telecode }}</option></datalist><label class="scope-control"><span>出发范围</span><select v-model="fromScope" aria-label="出发范围"><option value="city">同城车站</option><option value="station">仅此车站</option></select></label></div>
+        <div><label for="journey-from" class="journey-label">出发地</label><input id="journey-from" v-model="fromText" list="journey-from-list" @input="suggest('from')" @focus="suggest('from')" class="journey-input" placeholder="城市或完整车站名" required autocomplete="off" /><datalist id="journey-from-list"><option v-for="s in suggestions.from" :key="s.telecode" :value="s.name">{{ s.city_name }} · {{ s.telecode }}</option></datalist><label class="scope-control"><span class="sr-only">出发范围</span><select v-model="fromScope" aria-label="出发范围"><option value="city">同城车站</option><option value="station">仅此车站</option></select></label></div>
         <button type="button" @click="swap" class="swap-button" aria-label="交换出发地与目的地"><ArrowLeftRight class="w-4 h-4" /></button>
-        <div><label for="journey-to" class="journey-label">目的地</label><input id="journey-to" v-model="toText" list="journey-to-list" @input="suggest('to')" @focus="suggest('to')" class="journey-input" placeholder="城市或完整车站名" required autocomplete="off" /><datalist id="journey-to-list"><option v-for="s in suggestions.to" :key="s.telecode" :value="s.name">{{ s.city_name }} · {{ s.telecode }}</option></datalist><label class="scope-control"><span>到达范围</span><select v-model="toScope" aria-label="到达范围"><option value="city">同城车站</option><option value="station">仅此车站</option></select></label></div>
-        <div><label for="journey-date" class="journey-label">出发日期</label><input id="journey-date" v-model="trainDate" type="date" :min="today" :max="lastDate" class="journey-input" required /><div class="flex gap-3 mt-2 text-xs text-blue-700"><button type="button" @click="trainDate=today">今天</button><button type="button" @click="trainDate=addDays(today,1)">明天</button><span class="text-slate-500">15 天内</span></div></div>
+        <div><label for="journey-to" class="journey-label">目的地</label><input id="journey-to" v-model="toText" list="journey-to-list" @input="suggest('to')" @focus="suggest('to')" class="journey-input" placeholder="城市或完整车站名" required autocomplete="off" /><datalist id="journey-to-list"><option v-for="s in suggestions.to" :key="s.telecode" :value="s.name">{{ s.city_name }} · {{ s.telecode }}</option></datalist><label class="scope-control"><span class="sr-only">到达范围</span><select v-model="toScope" aria-label="到达范围"><option value="city">同城车站</option><option value="station">仅此车站</option></select></label></div>
+        <div><label for="journey-date" class="journey-label">出发日期</label><input id="journey-date" v-model="trainDate" type="date" :min="today" :max="lastDate" class="journey-input" required /><div class="date-shortcuts"><button v-for="(label,index) in ['今天','明天','后天']" :key="label" type="button" class="date-shortcut" :class="{'date-active':trainDate===addDays(today,index)}" :aria-pressed="trainDate===addDays(today,index)" @click="trainDate=addDays(today,index)">{{ label }}</button><span>可查 15 天内</span></div></div>
       </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+      <div class="search-filters basic-preferences">
+        <label>列车类型<select v-model="trainType" aria-label="列车类型"><option value="all">全部列车</option><option value="high_speed">高铁 / 动车</option><option value="regular">普速列车</option></select></label>
+        <label>方案排序<select v-model="sortBy" aria-label="方案排序"><option value="duration">耗时最短</option><option value="arrival">最早到达</option><option value="price">总价最低</option></select></label>
+      </div>
+      <details ref="stationSettings" class="station-settings" :open="stationSettingsOpen" @toggle="stationSettingsOpen=$event.target.open">
+      <summary><span class="settings-disclosure-heading"><span>选择具体车站</span><small>{{ stationSummary }}</small></span><ChevronDown class="disclosure-chevron w-4 h-4" aria-hidden="true" /></summary>
+      <div class="station-details-content grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
         <fieldset v-for="side in ['from','to']" :key="side" class="rounded-xl border border-slate-200 p-3 min-w-0">
           <legend class="text-xs font-semibold text-slate-700">{{ side==='from' ? '出发实际车站' : '到达实际车站' }}</legend>
           <p v-if="endpointScopes[side].loading" class="text-xs text-slate-500">正在加载车站范围…</p>
@@ -26,14 +33,11 @@
           </template>
         </fieldset>
       </div>
-      <div class="search-filters">
-        <label>列车类型<select v-model="trainType" aria-label="列车类型"><option value="all">全部列车</option><option value="high_speed">高铁 / 动车</option><option value="regular">普速列车</option></select></label>
-        <label>方案排序<select v-model="sortBy" aria-label="方案排序"><option value="duration">耗时最短</option><option value="arrival">最早到达</option><option value="price">总价最低</option></select><span class="sort-scope">对本次已查到方案排序</span></label>
-        <span class="filter-summary">最多 {{ transferCount }} 次同站换乘 · {{ officialTime ? '官方参考时间' : `至少 ${minMinutes} 分钟` }}</span>
-      </div>
-      <details class="advanced-settings" :open="advancedOpen" @toggle="advancedOpen=$event.target.open">
-        <summary><span>席别与中转设置</span><span class="settings-summary">{{ seatSummary }}</span></summary>
-        <fieldset class="mt-4"><legend class="journey-label mb-2">可接受席别（各段可分别选择）</legend><div class="flex flex-wrap gap-2"><label v-for="seat in seatOptions" :key="seat.code" class="seat-chip" :class="{'seat-selected':allowedSeats.includes(seat.code)}"><input v-model="allowedSeats" type="checkbox" :value="seat.code" class="accent-blue-600" />{{ seat.name }}</label></div></fieldset>
+      <p class="text-xs text-slate-500 mt-3 leading-relaxed">查询以这里勾选的实际车站为准。想更换同城车站，可以直接调整。</p>
+      </details>
+      <details ref="advancedSettings" class="advanced-settings" :open="advancedOpen" @toggle="advancedOpen=$event.target.open">
+        <summary><span class="settings-disclosure-heading"><span>席别与中转设置</span><small>{{ seatSummary }}<br />{{ transferSummary }}</small></span><ChevronDown class="disclosure-chevron w-4 h-4" aria-hidden="true" /></summary>
+        <fieldset ref="seatSettings" class="mt-4" aria-label="可接受席别"><legend class="journey-label mb-2">可接受席别（各段可分别选择）</legend><div class="flex flex-wrap gap-2"><label v-for="seat in seatOptions" :key="seat.code" class="seat-chip" :class="{'seat-selected':allowedSeats.includes(seat.code)}"><input v-model="allowedSeats" type="checkbox" :value="seat.code" class="accent-blue-600" />{{ seat.name }}</label></div></fieldset>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-5">
           <label class="journey-label">最多换乘<select v-model.number="transferCount" class="journey-input"><option v-for="n in 3" :key="n" :value="n">最多 {{ n }} 次 · {{ n+1 }} 段列车</option></select></label>
           <label class="journey-label">同车最多分段<select v-model.number="maxSameSegments" class="journey-input"><option :value="2">最多 2 段</option><option :value="3">最多 3 段</option></select></label>
@@ -44,20 +48,22 @@
       </details>
       </div>
       <div class="settings-actions">
-        <button type="button" :disabled="loading" class="journey-primary query-button" @click="submitQuery('fastest')">查最快中转</button>
         <button type="submit" :disabled="loading" class="journey-primary query-button"><Search v-if="!loading" class="w-4 h-4" /><LoaderCircle v-else class="w-4 h-4 animate-spin" />{{ loading ? '正在查询…' : '查询车次' }}</button>
-        <div class="settings-save-row"><p v-if="!settingsSaved" role="status">此浏览器暂时无法保存设置</p><button type="button" @click="resetSettings">恢复默认设置</button></div>
+        <button type="button" :disabled="loading" class="journey-secondary query-button" @click="submitQuery('fastest')">查最快中转<ArrowRight class="w-4 h-4" aria-hidden="true" /></button>
+        <p class="query-helper">先选车次查方案，或直接比较中转路线</p>
+        <div class="settings-save-row"><p role="status">{{ settingsSaved ? '设置已自动保存' : '此浏览器暂时无法保存设置' }}</p><button type="button" @click="resetSettings">恢复默认设置</button></div>
       </div>
     </form>
   </aside>
   <div class="journey-results-column" :inert="isNarrow && settingsOpen">
   <div v-if="!settingsOpen" class="mobile-query-bar">
-    <div class="mobile-query-summary"><strong>{{ fromText || '出发地' }} → {{ toText || '目的地' }}</strong><span>{{ trainDate }} · {{ officialTime ? '官方换乘时间' : `换乘至少 ${minMinutes} 分钟` }}</span></div>
-    <div class="mobile-query-buttons"><button ref="settingsTrigger" type="button" class="journey-secondary" @click="openSettings"><SlidersHorizontal class="w-4 h-4" />修改条件</button><button type="button" class="journey-primary" :disabled="loading" @click="submitQuery('fastest')">查最快中转</button><button type="button" class="journey-secondary" :disabled="loading" @click="submitQuery">{{ loading ? '正在查询…' : '查询车次' }}</button></div>
+    <button type="button" class="mobile-query-summary" aria-label="修改出发地、目的地和日期" @click="openSettings"><strong>{{ fromText || '出发地' }} → {{ toText || '目的地' }}</strong><span>{{ trainDate }} · {{ officialTime ? '参考换乘时间' : `换乘至少 ${minMinutes} 分钟` }}</span><em>{{ stationCountSummary }} · 点击修改</em></button>
+    <div class="mobile-query-buttons"><button ref="settingsTrigger" type="button" class="journey-secondary" aria-controls="journey-settings" :aria-expanded="settingsOpen" @click="openSettings"><SlidersHorizontal class="w-4 h-4" />修改条件</button><button type="button" class="journey-primary" :disabled="loading" @click="submitQuery()"><Search v-if="!loading" class="w-4 h-4" aria-hidden="true" /><LoaderCircle v-else class="w-4 h-4 animate-spin" aria-hidden="true" />{{ loading ? '正在查询…' : '查询车次' }}</button></div>
+    <button type="button" class="mobile-fastest-link" :disabled="loading" @click="submitQuery('fastest')">查最快中转<ArrowRight class="w-4 h-4" aria-hidden="true" /></button>
   </div>
   <div class="journey-results-scroll" role="region" aria-label="车次与路线结果" tabindex="0">
   <div v-if="notice" role="status" class="notice-box text-blue-900 bg-blue-50 border-blue-200">{{ notice }}</div>
-  <div v-if="error" role="alert" class="notice-box text-rose-900 bg-rose-50 border-rose-200">{{ error }}</div>
+  <div v-if="error" role="alert" class="notice-box text-rose-900 bg-rose-50 border-rose-200"><p>{{ error }}</p><div class="error-actions"><button type="button" class="journey-secondary" @click="submitQuery(queryMode)">重试查询</button><button type="button" class="text-blue-700" @click="openSettings">检查查询条件</button></div></div>
   <section v-if="loading" class="journey-card p-6 flex flex-wrap items-center gap-4" role="status"><LoaderCircle class="w-5 h-5 animate-spin text-blue-600" /><p class="text-sm font-semibold">{{ showGlobal ? '正在查询全部出行路线…' : '正在查询车次与直达余票…' }}</p><button type="button" @click="cancel" class="ml-auto text-sm text-blue-700 min-h-10">取消本次查询</button></section>
   <section v-if="result && !loading" class="space-y-3" aria-labelledby="results-heading">
     <div class="results-toolbar">
@@ -74,7 +80,7 @@
     </template>
     <div v-else class="journey-card p-4 sm:p-5"><JourneyAlternatives :result="result" :sort-by="sortBy" :allow-large-detour="allowLargeDetour" :fastest="queryMode==='fastest'" :max-transfers="transferCount" @more-transfers="expandTransfers" @retry="search(queryMode)" @seat-change="changeSeat($event,result)" @short-seat-change="changeShortSeat($event,result)" @expanded="expandSearch" @short-fallback="search(queryMode,true)" /></div>
   </section>
-  <section v-if="!result && !loading && !error" class="start-hint"><TrainFront class="w-6 h-6 text-blue-500 shrink-0" /><div><p class="font-semibold text-sm">无票车次也能查方案</p><p class="text-xs text-slate-500 mt-1 leading-relaxed">查询后点击某辆车，查看同车换座或沿途同站换车；也可<button type="button" @click="search('all')" class="text-blue-700 underline min-h-9">不限定车次查全部路线</button>。</p></div></section>
+  <section v-if="!result && !loading && !error" class="empty-state" aria-labelledby="start-heading"><div class="empty-state-icon"><TrainFront class="w-7 h-7" aria-hidden="true" /></div><h2 id="start-heading">查车次，也能找到接续和中转</h2><p class="empty-state-note">选好出发地、目的地和日期，其他条件按需设置。</p><ol class="empty-state-steps"><li><span aria-hidden="true">1</span><div><strong>查询车次</strong><p>先看直达余票和价格，无票车次也会显示。</p></div></li><li><span aria-hidden="true">2</span><div><strong>选择一辆车</strong><p>点击车次，查看同车接续或沿途同站中转。</p></div></li><li><span aria-hidden="true">3</span><div><strong>展开合适的方案</strong><p>核对各段时间、席别和总价，再安排出行。</p></div></li></ol><p class="empty-state-note">想一起比较路线？<button type="button" @click="submitQuery('all')" class="text-blue-700 underline min-h-9">不限定车次查全部路线</button></p></section>
   <details class="text-xs text-slate-500 leading-relaxed px-1 pb-3"><summary class="cursor-pointer py-2 font-medium">查询规则与数据说明</summary><div class="mt-2 space-y-2"><p>全程有票路线仅包含已查到现票的区间，候补、不可售及待补票区间不算现票。同车接续需持连续区间有效车票，按票面席位调整；重联列车换厢可能需经站台。</p><p>中途只接受同一实际车站换乘。中转站动态发现，便捷换乘资料独立维护；行程范围72小时，查询有时间和次数上限；城市代表站返回不等于全部站对穷举，不保证全国最优。</p><p>默认采用已采集的官方参考换乘时间，无适用时间时，已核实便捷换乘参考15分钟，便捷换乘状态未核实默认60分钟；自定义时完全采用个人设置。余票、票价是查询快照，计划时刻不含晚点，须结合检票截止时间和现场安排留足余量。</p><p>绕行筛选使用 <a href="https://www.geonames.org/export/" target="_blank" rel="noopener noreferrer" class="text-blue-700 underline">GeoNames 城市中心坐标（CC BY 4.0）</a>及全程耗时，地理距离不等于铁路里程。可主动允许较大绕行或指定站。</p><p><a href="https://mobile.12306.cn/otsmobile/h5/otsbussiness/info/transportationRules.html" target="_blank" rel="noopener noreferrer" class="text-blue-700 underline">12306 旅客运输规程</a> · <a href="https://m.thepaper.cn/newsDetail_forward_29181361" target="_blank" rel="noopener noreferrer" class="text-blue-700 underline">铁路部门同车接续说明</a></p></div></details>
   </div>
   </div>
@@ -82,7 +88,7 @@
 </template>
 <script setup>
 import {ref,reactive,toRefs,computed,watch,nextTick,onMounted,onUnmounted} from 'vue'
-import {Search,LoaderCircle,ArrowLeftRight,TrainFront,X,SlidersHorizontal} from 'lucide-vue-next'
+import {Search,LoaderCircle,ArrowLeftRight,ArrowRight,ChevronDown,TrainFront,X,SlidersHorizontal} from 'lucide-vue-next'
 import JourneyTrainCard from './JourneyTrainCard.vue'
 import JourneyAlternatives from './JourneyAlternatives.vue'
 import {seatOptions,calculateFare,formatDateTime} from '../lib/transfer.js'
@@ -96,22 +102,50 @@ const {fromText,toText,fromScope,toScope,trainDate,trainType,sortBy,allowedSeats
 watch(settings,()=>{settingsSaved.value=saveJourneySettings(settings,today)},{deep:true,immediate:true})
 const narrowScreen=window.matchMedia('(max-width: 1199px)'),isNarrow=ref(narrowScreen.matches)
 const settingsOpen=ref(false),settingsPanel=ref(null),settingsTrigger=ref(null),settingsForm=ref(null)
+const advancedSettings=ref(null),stationSettings=ref(null),seatSettings=ref(null),stationSettingsOpen=ref(false),formError=ref('')
 let previousBodyOverflow=null
 function screenChanged(event){isNarrow.value=event.matches;if(!event.matches)settingsOpen.value=false}
 async function openSettings(){settingsOpen.value=true;await nextTick();settingsPanel.value?.focus()}
 async function closeSettings(){settingsOpen.value=false;await nextTick();if(isNarrow.value)settingsTrigger.value?.focus()}
-async function submitQuery(mode='direct'){
-  if(!settingsForm.value.checkValidity()){
+async function revealControl(control){
+  if(advancedSettings.value?.contains(control)){
+    advancedSettings.value.open=true
     advancedOpen.value=true
-    await openSettings()
-    settingsForm.value.reportValidity()
-    return
   }
-  if(mode==='fastest')await search('fastest')
-  else settingsForm.value.requestSubmit()
+  if(stationSettings.value?.contains(control)){
+    stationSettings.value.open=true
+    stationSettingsOpen.value=true
+  }
+  await openSettings()
+  await nextTick()
+  control?.focus()
+  control?.scrollIntoView({block:'nearest'})
 }
+async function validateSettings(){
+  formError.value=''
+  if(!settingsForm.value.checkValidity()){
+    formError.value='请补充或修正标出的查询条件。'
+    await revealControl(settingsForm.value.querySelector(':invalid'))
+    settingsForm.value.reportValidity()
+    return false
+  }
+  if(!allowedSeats.value.length){
+    formError.value='请至少选择一种可接受席别。'
+    await revealControl(seatSettings.value?.querySelector('input'))
+    return false
+  }
+  if(viaTexts.value.filter(s=>s.trim()).length>transferCount.value){
+    formError.value='请移除多出的指定站，或增加同站换乘次数。'
+    await revealControl(settingsForm.value.querySelector('#via-0'))
+    return false
+  }
+  return true
+}
+async function submitQuery(mode='direct'){if(!loading.value)await search(mode)}
 function resetSettings(){
   invalidate()
+  formError.value=''
+  stationSettingsOpen.value=false
   Object.assign(settings,createDefaultSettings(today))
   refreshScope('from');refreshScope('to')
   notice.value='已恢复默认查询设置。'
@@ -142,6 +176,19 @@ const trains=computed(()=>result.value?.trains || [])
 const sortedTrains=computed(()=>[...trains.value].sort((a,b)=>trainSort.value==='departure'?a.start_time.localeCompare(b.start_time):minutes(a.duration)-minutes(b.duration)))
 const availableCount=computed(()=>trains.value.filter(t=>trainHasSeats(t,allowedSeats.value)).length)
 const seatSummary=computed(()=>seatOptions.filter(s=>allowedSeats.value.includes(s.code)).map(s=>s.name).join(' / ') || '请选择席别')
+const transferSummary=computed(()=>`最多 ${transferCount.value} 次换乘 · ${officialTime.value ? '参考换乘时间' : `个人 ${minMinutes.value} 分钟`}${viaTexts.value.some(s=>s.trim()) ? ' · 已指定中转站' : ''}${allowLargeDetour.value ? ' · 允许绕行' : ''}`)
+const stationSummary=computed(()=>['from','to'].map(side=>{
+  const scope=endpointScopes[side],label=side==='from'?'出发':'到达'
+  if(scope.loading)return `${label}站加载中`
+  if(scope.error)return `${label}站待确认`
+  const names=scope.stations.filter(s=>scope.codes.includes(s.telecode)).map(s=>s.name)
+  return names.length ? `${label}：${names.slice(0,2).join('、')}${names.length>2 ? ` 等 ${names.length} 站` : ''}` : `${label}：未选车站`
+}).join(' · '))
+const stationCountSummary=computed(()=>['from','to'].map(side=>{
+  const scope=endpointScopes[side],label=side==='from'?'出发':'到达'
+  return scope.loading || scope.error ? `${label}站待确认` : `${label} ${scope.codes.length} 站`
+}).join(' · '))
+watch([fromText,toText,fromScope,toScope,trainDate,allowedSeats,minMinutes,officialTime,viaTexts],()=>{formError.value=''},{deep:true})
 function minutes(duration){const [h,m]=duration.split(':').map(Number);return h*60+m}
 function clearPlan(){planSequence++;planController.cancel();planning.value=false;selectedTrain.value=null;selectedResult.value=null;planError.value=''}
 function invalidate(){sequence++;controller.cancel();clearPlan();loading.value=false;result.value=null;resolvedRequest=null;error.value='';notice.value=''}
@@ -193,25 +240,33 @@ function selectScopeStation(side,code,checked){
 }
 async function suggest(which){const id=++suggestionIds[which],value=which==='from'?fromText.value:toText.value;try{const found=await stationLookup(value);if(!disposed&&id===suggestionIds[which])suggestions.value[which]=found}catch{/* Submission reports failures. */}}
 async function suggestVia(value){const id=++suggestionIds.via;try{const found=await stationLookup(value);if(!disposed&&id===suggestionIds.via)viaSuggestions.value=found.map(s=>({...s,station_name:s.name,station_code:s.telecode}))}catch{/* Submission reports lookup failures. */}}
-function swap(){const a=fromText.value,s=fromScope.value;fromText.value=toText.value;toText.value=a;fromScope.value=toScope.value;toScope.value=s}
+function swap(){
+  const text=fromText.value,scope=fromScope.value,selection=settings.fromSelection
+  settings.fromSelection=settings.toSelection
+  settings.toSelection=selection
+  fromText.value=toText.value;toText.value=text
+  fromScope.value=toScope.value;toScope.value=scope
+}
 function cancel(){invalidate();notice.value='已取消本次查询。'}
 function cancelPlan(){planSequence++;planController.cancel();planning.value=false;notice.value='已取消方案查询，车次列表已保留。'}
 function backToTrains(){clearPlan();showGlobal.value=false}
 function toggleTrain(train){if(selectedTrain.value?.id===train.id)clearPlan();else planTrain(train)}
 async function planTrain(train,includeShortFallback=false){
   if(!train.selection || !resolvedRequest)return
+  if(!await validateSettings())return
   clearPlan();const id=++planSequence;selectedTrain.value=train;planning.value=true
   try{const options=requestOptions('all',includeShortFallback);const seats=trainSeatQuery(train,options.allowed_seats);const data=await planController.search({...resolvedRequest,...options,allowed_seats:seats.allowedSeats,selected_train:train.selection},async(body,signal)=>({...body,ordered_via_stations:await resolveViaStations([...viaTexts.value],stationLookup,signal)}));if(id===planSequence&&data)selectedResult.value=data}
   catch(e){if(id===planSequence)planError.value=e.message}
   finally{if(id===planSequence)planning.value=false}
 }
 async function expandSearch(){
+  if(!await validateSettings())return
   const train=selectedTrain.value
   allowLargeDetour.value=true
   if(train){notice.value='已允许较大绕行，本次仍从所选车次出发。';await planTrain(train)}
   else await search(queryMode.value)
 }
-async function expandTransfers(){const mode=queryMode.value;transferCount.value=Math.max(2,transferCount.value);await search(mode)}
+async function expandTransfers(){if(!await validateSettings())return;const mode=queryMode.value;transferCount.value=Math.max(2,transferCount.value);await search(mode)}
 function changeSeat({id,kind,index,code},data){const plan=data?.[kind]?.plans.find(p=>p.id===id);if(!plan||!plan.legs[index].seats.some(s=>s.code===code))return;plan.selected_seat_codes[index]=code;const fare=calculateFare(plan.legs,plan.selected_seat_codes);plan.total_price_fen=fare.totalPriceFen;plan.known_price_fen=fare.knownPriceFen}
 function changeShortSeat({id,code},data){const option=data?.short_fallback?.options.find(o=>o.id===id),seat=option?.ticketed_leg.seats.find(s=>s.code===code);if(seat){option.selected_seat_code=code;option.known_price_fen=seat.price_fen ?? 0}}
 function requestOptions(mode,includeShortFallback=false){
@@ -222,6 +277,7 @@ function requestOptions(mode,includeShortFallback=false){
   return {train_date:trainDate.value,from_scope:fromScope.value,to_scope:toScope.value,mode,train_type:trainType.value,sort_by:mode==='fastest'?'duration':sortBy.value,allowed_seats:[...allowedSeats.value],transfer_count:transferCount.value,max_transfers:transferCount.value,max_same_train_segments:maxSameSegments.value,min_transfer_minutes:officialTime.value?null:minMinutes.value,ordered_via_stations:via,allow_large_detour:allowLargeDetour.value,include_short_fallback:includeShortFallback}
 }
 async function search(mode='direct',includeShortFallback=false){
+  if(!await validateSettings())return
   if(isNarrow.value)closeSettings()
   if(mode==='fastest')sortBy.value='duration'
   invalidate();queryMode.value=mode;showGlobal.value=mode!=='direct';const id=++sequence;loading.value=true
