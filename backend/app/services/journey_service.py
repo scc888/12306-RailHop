@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from ..models.journey_schemas import (JourneyResult, JourneyGroup, JourneyGroupMeta, JourneyPlan,
     ShortTicketGroup, JourneyTrain, SelectedTrain)
 from ..models.transfer_schemas import TransferQueryRequest, TransferLeg
-from .client_12306 import RailwayQueryError
+from .client_12306 import RailwayQueryError, is_query_cancelled, wait_unless_cancelled
 from .transfer_ticket_gateway import CST, ticket_to_leg
 from .transfer_planner import TransferPlanner
 from .route_policy import RoutePolicy
@@ -50,6 +50,8 @@ class JourneyService:
                                       or request.selected_train.to_station not in destinations):
             raise ValueError('所选车次不在当前出发和到达范围内，请重新查询车次后选择')
         # Validate supplied interchange constraints even when auto mode would skip transfer.
+        if request.mode == 'direct':
+            request.ordered_via_stations = [c for c in request.ordered_via_stations if c not in origins | destinations]
         self.transfer.stations.validate_via(request.ordered_via_stations) if hasattr(self.transfer,'stations') else None
         if any(c in origins | destinations for c in request.ordered_via_stations):
             raise ValueError('指定中转站不能属于所选起点或终点范围')
@@ -179,7 +181,7 @@ class JourneyService:
                 group.meta=JourneyGroupMeta(status='partial',notices=['查询已达到总时间上限，中转尚未完成。'])
             else:
                 anchor_options = {'first_train':selected} if selected else {}
-                if request.mode == 'fastest' and not direct_failed:
+                if request.mode in ('fastest', 'auto', 'all') and not direct_failed and not selected:
                     anchor_options['candidate_tickets'] = candidates
                 transfer_values = request.model_dump()
                 if request.mode == 'fastest':
@@ -207,7 +209,9 @@ class JourneyService:
                 group.meta=JourneyGroupMeta(**details)
                 group.plans=[JourneyPlan(**p.model_dump(),kind='transfer') for p in found.plans]
         short_group=ShortTicketGroup()
-        if request.include_short_fallback and not any(g.plans for g in groups.values()):
+        has_full_route = (bool(groups['direct'].plans or groups['same_train'].plans)
+            if request.selected_train is not None else any(g.plans for g in groups.values()))
+        if request.include_short_fallback and not has_full_route:
             anchor_partial = groups['direct'].meta.status == 'partial'
             short_group.meta=JourneyGroupMeta(status='partial' if city_partial or anchor_partial else 'complete',
                 notices=list(coverage) + (groups['direct'].meta.notices if anchor_partial else []))
@@ -268,14 +272,16 @@ class JourneyService:
         stop_at = min(deadline, time.monotonic() + 8)
         tickets, errors, successes = [], [], 0
         for index, (a, b) in enumerate(pairs):
-            if index >= 12 or time.monotonic() >= stop_at:
+            if index >= 12 or time.monotonic() >= stop_at or (index > 0 and is_query_cancelled()):
                 meta.status = 'partial'
                 meta.notices.append('直达对照尚未覆盖全部所选车站组合，可单独查询车次。')
                 break
-            if index:
-                time.sleep(min(settings.TRANSFER_REQUEST_INTERVAL, max(0, stop_at-time.monotonic())))
+            cached_query = (hasattr(self.client, 'has_cached_query') and
+                self.client.has_cached_query('tickets', request.train_date.isoformat(), a, b) is True)
+            if index and not cached_query:
+                wait_unless_cancelled(min(settings.TRANSFER_REQUEST_INTERVAL, max(0, stop_at-time.monotonic())))
             remaining = stop_at-time.monotonic()
-            if remaining <= 0:
+            if remaining <= 0 or (index > 0 and is_query_cancelled()):
                 meta.status = 'partial'
                 meta.notices.append('直达对照尚未覆盖全部所选车站组合，可单独查询车次。')
                 break

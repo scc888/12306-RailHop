@@ -64,6 +64,34 @@ curl -fsS http://127.0.0.1:8080/health
 
 ---
 
+## PostgreSQL 查询缓存（可选）
+
+余票成功响应缓存 15 秒（包含成功的空结果），经停时刻表缓存 12 小时；失败响应不缓存。
+直达、同车接续、中转查询共享这些公开数据，席别和实际站点仍按每次请求筛选。
+内存缓存有容量上限；配置 PostgreSQL 后可跨进程、重启复用。
+数据库不可用时自动回退到内存和铁路接口，并暂缓数据库重连。
+
+已有 PostgreSQL Docker 容器时，在服务器上执行一次：
+
+```bash
+python3 deploy/configure-postgres-cache.py pgsql16
+```
+
+脚本创建专用 `railhop_cache` 数据库和用户，将随机密码保存在权限为 `600` 的
+`/etc/railhop/cache.env`，将数据库所在网络保存在 `/etc/railhop/docker-network`。
+现有业务数据库不会被修改；已保存的配置不会被覆盖。
+后续 `deploy-docker.sh`（包括 CI 部署）自动读取这两份文件，使应用加入相同网络。
+脚本本身不重启应用；首次启用需要部署新版应用。
+
+也可自行设置环境变量 `QUERY_CACHE_DATABASE_URL`（PostgreSQL URI）与
+`TICKET_CACHE_SECONDS`（0 关闭余票缓存，最大 30 秒）。缓存表由应用首次使用时自动建立，
+数据库用户需要在专用数据库中创建 `railhop_cache` schema 和表的权限。
+不要将连接串或密码提交到仓库。
+
+直接使用 Docker Compose 时，设置连接串后执行 `docker compose up -d --build`。
+若数据库端口已发布到宿主机，连接串中的主机可使用 `host.docker.internal`；
+使用数据库容器名则需让两个服务加入同一个 Docker 网络。
+
 ## 方式三：原生 Systemd + Nginx 部署（备选）
 
 若不想使用 Docker，也可使用原生的 Linux 进程托管方式：

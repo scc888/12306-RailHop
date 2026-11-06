@@ -1,6 +1,6 @@
 <template>
   <article class="train-card" :class="{'train-card-open':expanded}" data-testid="train-row" :data-train="train.train_code">
-    <div class="train-row-main">
+    <div class="train-row-main" :class="{'cursor-pointer':!!train.selection}" @click="onRowClick">
       <div class="train-code-cell">
         <button type="button" class="train-code" :disabled="!train.selection" :aria-label="`查看 ${train.train_code} 的接续中转方案`" :aria-expanded="expanded" :aria-controls="`plans-${train.id}`" @click="$emit('toggle')">{{ train.train_code }}</button>
         <span class="train-type">{{ /^[GDC]/i.test(train.train_code) ? '高铁 / 动车' : '普速列车' }}</span>
@@ -16,7 +16,10 @@
         </div>
       </div>
       <div class="train-action">
-        <span class="train-availability" :class="{'text-emerald-700':available}">{{ seatQuery.fallback ? (available ? '默认席别有票' : '默认席别无现票') : (available ? '所选席别有票' : '所选席别无现票') }}</span>
+        <div class="flex items-center gap-1.5">
+          <span v-if="cached && !expanded" class="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">已缓存方案</span>
+          <span class="train-availability" :class="{'text-emerald-700':available}">{{ seatQuery.fallback ? (available ? '默认席别有票' : '默认席别无现票') : (available ? '所选席别有票' : '所选席别无现票') }}</span>
+        </div>
         <button type="button" class="train-plan-button" :disabled="!train.selection" :aria-expanded="expanded" :aria-controls="`plans-${train.id}`" @click="$emit('toggle')">{{ !train.selection ? '时刻待核验' : expanded ? '收起方案' : '接续 / 中转' }}<ChevronDown v-if="train.selection" class="w-4 h-4" :class="{'rotate-180':expanded}" /></button>
       </div>
     </div>
@@ -30,8 +33,12 @@ import {ChevronDown} from 'lucide-vue-next'
 import {trainSeatQuotes,trainSeatQuery} from '../lib/fares.js'
 import {seatOptions} from '../lib/transfer.js'
 import {trainHasSeats,trainArrivalDay} from '../lib/journey.js'
-const props=defineProps({train:{type:Object,required:true},allowedSeats:{type:Array,required:true},expanded:Boolean})
-defineEmits(['toggle'])
+const props=defineProps({train:{type:Object,required:true},allowedSeats:{type:Array,required:true},expanded:Boolean,cached:Boolean})
+const emit=defineEmits(['toggle'])
+function onRowClick(event){
+  if(!props.train.selection || event.target.closest('button,a,input,select,label'))return
+  emit('toggle')
+}
 const seatQuery=computed(()=>trainSeatQuery(props.train,props.allowedSeats))
 const available=computed(()=>trainHasSeats(props.train,seatQuery.value.allowedSeats))
 const fallbackSeatNames=computed(()=>seatOptions.filter(seat=>seatQuery.value.applicableSeats.includes(seat.code)).map(seat=>seat.name).join(' / '))

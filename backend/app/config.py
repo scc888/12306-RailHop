@@ -2,6 +2,7 @@
 12306 查票工具配置文件
 """
 from pydantic_settings import BaseSettings
+from pydantic import Field
 
 class Settings(BaseSettings):
     APP_NAME: str = "12306-RailHop (铁跃) 智能查票与跨站规划服务"
@@ -19,6 +20,9 @@ class Settings(BaseSettings):
     REQUEST_TIMEOUT: int = 10
     STATION_CACHE_HOURS: int = 24
     STOPS_CACHE_HOURS: int = 12
+    TICKET_CACHE_SECONDS: float = Field(15, ge=0, le=30)
+    QUERY_CACHE_DATABASE_URL: str = Field('', repr=False)
+    QUERY_CACHE_SIZE: int = Field(2048, ge=1)
     TRANSFER_MAX_CANDIDATES: int = 32
     TRANSFER_DISCOVERY_SECONDS: float = 12
     TRANSFER_DISCOVERY_PROBES: int = 4

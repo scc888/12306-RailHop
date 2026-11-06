@@ -84,6 +84,7 @@ def build_package(release_date="20261014"):
     target_deploy_dir = os.path.join(target_dir, "deploy")
     os.makedirs(target_deploy_dir, exist_ok=True)
     shutil.copy2(os.path.join(deploy_dir, "docker-nginx.conf"), os.path.join(target_deploy_dir, "docker-nginx.conf"))
+    shutil.copy2(os.path.join(deploy_dir, "configure-postgres-cache.py"), os.path.join(target_deploy_dir, "configure-postgres-cache.py"))
     with open(os.path.join(deploy_dir, "docker-entrypoint.sh"), "r", encoding="utf-8") as f:
         entrypoint_content = f.read().replace("\r\n", "\n")
     with open(os.path.join(target_deploy_dir, "docker-entrypoint.sh"), "wb") as f:

@@ -21,6 +21,10 @@
       "latitude": 30.81601,
       "longitude": 108.37407
     },
+    "万象": {
+      "latitude": 17.9757,
+      "longitude": 102.6331
+    },
     "三亚": {
       "geoname_id": 1796556,
       "latitude": 18.25435,
@@ -35,6 +39,10 @@
       "geoname_id": 1796669,
       "latitude": 34.78081,
       "longitude": 111.19287
+    },
+    "上杭": {
+      "latitude": 25.05,
+      "longitude": 116.42
     },
     "上海": {
       "geoname_id": 1796236,
@@ -70,6 +78,18 @@
       "geoname_id": 1784285,
       "latitude": 37.51129,
       "longitude": 105.19067
+    },
+    "中山": {
+      "latitude": 22.5176,
+      "longitude": 113.3926
+    },
+    "丰都": {
+      "latitude": 29.8664,
+      "longitude": 107.7324
+    },
+    "临川": {
+      "latitude": 27.9772,
+      "longitude": 116.3592
     },
     "临汾": {
       "geoname_id": 1803567,
@@ -121,6 +141,10 @@
       "latitude": 43.80096,
       "longitude": 87.60046
     },
+    "乐东": {
+      "latitude": 18.7499,
+      "longitude": 109.1736
+    },
     "乐山": {
       "geoname_id": 1804153,
       "latitude": 29.56227,
@@ -136,6 +160,10 @@
       "latitude": 43.6475,
       "longitude": 111.97667
     },
+    "于都": {
+      "latitude": 25.9528,
+      "longitude": 115.4158
+    },
     "云浮": {
       "geoname_id": 1785725,
       "latitude": 22.92787,
@@ -146,10 +174,18 @@
       "latitude": 33.44743,
       "longitude": 112.71422
     },
+    "京山": {
+      "latitude": 31.0189,
+      "longitude": 113.1195
+    },
     "亳州": {
       "geoname_id": 1816234,
       "latitude": 33.87722,
       "longitude": 115.77028
+    },
+    "仙桃": {
+      "latitude": 30.3625,
+      "longitude": 113.454
     },
     "仪征": {
       "geoname_id": 1784580,
@@ -201,6 +237,10 @@
       "latitude": 19.52134,
       "longitude": 109.57895
     },
+    "元江": {
+      "latitude": 23.5978,
+      "longitude": 101.9997
+    },
     "克拉玛依": {
       "geoname_id": 1529401,
       "latitude": 45.58473,
@@ -221,15 +261,35 @@
       "latitude": 36.05701,
       "longitude": 103.83987
     },
+    "兴义": {
+      "latitude": 25.092,
+      "longitude": 104.8955
+    },
+    "兴安": {
+      "latitude": 25.6119,
+      "longitude": 110.6717
+    },
     "内江": {
       "geoname_id": 1799491,
       "latitude": 29.58354,
       "longitude": 105.06216
     },
+    "凤阳": {
+      "latitude": 32.8669,
+      "longitude": 117.5583
+    },
     "凯里": {
       "geoname_id": 1804866,
       "latitude": 26.58583,
       "longitude": 107.97972
+    },
+    "加查": {
+      "latitude": 29.1408,
+      "longitude": 92.5919
+    },
+    "加格达奇": {
+      "latitude": 50.405,
+      "longitude": 124.1228
     },
     "勐腊": {
       "geoname_id": 1800716,
@@ -256,6 +316,10 @@
       "latitude": 32.6475,
       "longitude": 110.77806
     },
+    "华阴": {
+      "latitude": 34.5653,
+      "longitude": 110.0922
+    },
     "南京": {
       "geoname_id": 1799962,
       "latitude": 32.06167,
@@ -270,6 +334,14 @@
       "geoname_id": 1799869,
       "latitude": 22.81667,
       "longitude": 108.31667
+    },
+    "南川": {
+      "latitude": 29.1575,
+      "longitude": 107.0992
+    },
+    "南平": {
+      "latitude": 26.6415,
+      "longitude": 118.1777
     },
     "南昌": {
       "geoname_id": 1800163,
@@ -320,6 +392,10 @@
       "geoname_id": 1808722,
       "latitude": 31.86389,
       "longitude": 117.28083
+    },
+    "吉安": {
+      "latitude": 27.113,
+      "longitude": 114.9946
     },
     "吉林": {
       "geoname_id": 2036502,
@@ -401,6 +477,10 @@
       "latitude": 33.86667,
       "longitude": 109.93056
     },
+    "喀什": {
+      "latitude": 39.4704,
+      "longitude": 75.9898
+    },
     "嘉兴": {
       "geoname_id": 1805953,
       "latitude": 30.7522,
@@ -421,10 +501,18 @@
       "latitude": 36.00667,
       "longitude": 106.28083
     },
+    "垫江": {
+      "latitude": 30.3268,
+      "longitude": 107.334
+    },
     "塔城": {
       "geoname_id": 1529167,
       "latitude": 46.74535,
       "longitude": 82.95847
+    },
+    "墨江": {
+      "latitude": 23.4319,
+      "longitude": 101.6894
     },
     "大同": {
       "geoname_id": 2037799,
@@ -441,6 +529,10 @@
       "latitude": 25.58474,
       "longitude": 100.21229
     },
+    "大足": {
+      "latitude": 29.707,
+      "longitude": 105.7217
+    },
     "大连": {
       "geoname_id": 1814087,
       "latitude": 38.91222,
@@ -456,10 +548,18 @@
       "latitude": 39.14222,
       "longitude": 117.17667
     },
+    "天门": {
+      "latitude": 30.6633,
+      "longitude": 113.1661
+    },
     "太原": {
       "geoname_id": 1793511,
       "latitude": 37.86944,
       "longitude": 112.56028
+    },
+    "奉节": {
+      "latitude": 31.0185,
+      "longitude": 109.4642
     },
     "威海": {
       "geoname_id": 1791673,
@@ -475,6 +575,10 @@
       "geoname_id": 1790254,
       "latitude": 30.92689,
       "longitude": 113.92221
+    },
+    "孟赛": {
+      "latitude": 20.6923,
+      "longitude": 101.9837
     },
     "宁德": {
       "geoname_id": 1806097,
@@ -500,6 +604,10 @@
       "geoname_id": 1789065,
       "latitude": 32.68,
       "longitude": 109.01722
+    },
+    "安溪": {
+      "latitude": 25.0563,
+      "longitude": 118.1862
     },
     "安阳": {
       "geoname_id": 1785294,
@@ -556,15 +664,31 @@
       "latitude": 33.94917,
       "longitude": 118.29583
     },
+    "富平": {
+      "latitude": 34.7511,
+      "longitude": 109.1803
+    },
     "山南": {
       "geoname_id": 8067345,
       "latitude": 29.24301,
       "longitude": 91.77239
     },
+    "岗嘎": {
+      "latitude": 28.6,
+      "longitude": 86.62
+    },
     "岳阳": {
       "geoname_id": 1927639,
       "latitude": 29.37455,
       "longitude": 113.09481
+    },
+    "峨山": {
+      "latitude": 24.1692,
+      "longitude": 102.4044
+    },
+    "崇仁": {
+      "latitude": 27.7592,
+      "longitude": 116.0603
     },
     "崇左": {
       "geoname_id": 12159964,
@@ -585,6 +709,10 @@
       "geoname_id": 11838258,
       "latitude": 40.74143,
       "longitude": 107.38599
+    },
+    "巴音郭楞蒙古自治州": {
+      "latitude": 41.7641,
+      "longitude": 86.1453
     },
     "常州": {
       "geoname_id": 1815456,
@@ -641,6 +769,18 @@
       "latitude": 36.59889,
       "longitude": 109.49167
     },
+    "延边": {
+      "latitude": 42.8912,
+      "longitude": 129.5089
+    },
+    "建宁": {
+      "latitude": 26.8319,
+      "longitude": 116.8461
+    },
+    "建德": {
+      "latitude": 29.4744,
+      "longitude": 119.2811
+    },
     "开封": {
       "geoname_id": 1804879,
       "latitude": 34.7986,
@@ -661,10 +801,22 @@
       "latitude": 38.93417,
       "longitude": 100.45167
     },
+    "当阳": {
+      "latitude": 30.8208,
+      "longitude": 111.7892
+    },
     "彭水": {
       "geoname_id": 1808916,
       "latitude": 29.29524,
       "longitude": 108.16132
+    },
+    "徐州": {
+      "latitude": 34.2044,
+      "longitude": 117.2858
+    },
+    "德令哈": {
+      "latitude": 37.3697,
+      "longitude": 97.3697
     },
     "德州": {
       "geoname_id": 1812955,
@@ -700,6 +852,10 @@
       "geoname_id": 1815286,
       "latitude": 30.66667,
       "longitude": 104.06667
+    },
+    "扎囊": {
+      "latitude": 29.2464,
+      "longitude": 91.3378
     },
     "扬州": {
       "geoname_id": 1787227,
@@ -781,6 +937,10 @@
       "latitude": 44.00782,
       "longitude": 87.30461
     },
+    "昌江": {
+      "latitude": 19.2981,
+      "longitude": 109.0556
+    },
     "昭通": {
       "geoname_id": 1784841,
       "latitude": 27.31667,
@@ -821,15 +981,27 @@
       "latitude": 39.31583,
       "longitude": 112.4225
     },
+    "朗县": {
+      "latitude": 29.0439,
+      "longitude": 93.0736
+    },
     "朝阳": {
       "geoname_id": 2038120,
       "latitude": 41.57028,
       "longitude": 120.45861
     },
+    "本溪": {
+      "latitude": 41.2942,
+      "longitude": 123.7665
+    },
     "来宾": {
       "geoname_id": 1804609,
       "latitude": 23.74743,
       "longitude": 109.22222
+    },
+    "来舟": {
+      "latitude": 26.605,
+      "longitude": 118.068
     },
     "杭州": {
       "geoname_id": 1808926,
@@ -866,10 +1038,18 @@
       "latitude": 27.83333,
       "longitude": 113.15
     },
+    "格尔木": {
+      "latitude": 36.4015,
+      "longitude": 94.9044
+    },
     "桂林": {
       "geoname_id": 1809498,
       "latitude": 25.28022,
       "longitude": 110.29639
+    },
+    "桑日": {
+      "latitude": 29.26,
+      "longitude": 92.0169
     },
     "桦南": {
       "geoname_id": 2036753,
@@ -936,10 +1116,18 @@
       "latitude": 26.42389,
       "longitude": 111.61306
     },
+    "永平": {
+      "latitude": 25.4642,
+      "longitude": 99.5408
+    },
     "汉中": {
       "geoname_id": 1808857,
       "latitude": 33.07507,
       "longitude": 107.02214
+    },
+    "汉川": {
+      "latitude": 30.6522,
+      "longitude": 113.8353
     },
     "汕头": {
       "geoname_id": 1795940,
@@ -950,6 +1138,14 @@
       "geoname_id": 1795928,
       "latitude": 22.78199,
       "longitude": 115.3475
+    },
+    "江津": {
+      "latitude": 29.2901,
+      "longitude": 106.2593
+    },
+    "江边村": {
+      "latitude": 18.9286,
+      "longitude": 108.8594
     },
     "江门": {
       "geoname_id": 1806299,
@@ -965,6 +1161,10 @@
       "geoname_id": 2034937,
       "latitude": 41.79222,
       "longitude": 123.43278
+    },
+    "沙县": {
+      "latitude": 26.3972,
+      "longitude": 117.7917
     },
     "沧州": {
       "geoname_id": 1816080,
@@ -1001,6 +1201,10 @@
       "latitude": 28.8903,
       "longitude": 105.42575
     },
+    "洛阳": {
+      "latitude": 34.6197,
+      "longitude": 112.454
+    },
     "济南": {
       "geoname_id": 1805753,
       "latitude": 36.66833,
@@ -1016,10 +1220,26 @@
       "latitude": 35.08912,
       "longitude": 112.58815
     },
+    "浠水": {
+      "latitude": 30.4519,
+      "longitude": 115.2661
+    },
     "海东": {
       "geoname_id": 1799471,
       "latitude": 36.48,
       "longitude": 102.41639
+    },
+    "海北州": {
+      "latitude": 36.9544,
+      "longitude": 100.9011
+    },
+    "海口": {
+      "latitude": 20.0442,
+      "longitude": 110.1999
+    },
+    "海西州": {
+      "latitude": 37.3771,
+      "longitude": 97.3697
     },
     "涪陵": {
       "geoname_id": 1810979,
@@ -1050,6 +1270,10 @@
       "geoname_id": 1795565,
       "latitude": 22.54554,
       "longitude": 114.0683
+    },
+    "深州": {
+      "latitude": 38.0019,
+      "longitude": 115.5542
     },
     "清远": {
       "geoname_id": 1797945,
@@ -1106,15 +1330,35 @@
       "latitude": 24.51333,
       "longitude": 117.65556
     },
+    "漾濞": {
+      "latitude": 25.6692,
+      "longitude": 99.9583
+    },
     "潍坊": {
       "geoname_id": 1791681,
       "latitude": 36.71,
       "longitude": 119.10194
     },
+    "潜江": {
+      "latitude": 30.4214,
+      "longitude": 112.8994
+    },
     "潮州": {
       "geoname_id": 1815395,
       "latitude": 23.65396,
       "longitude": 116.62262
+    },
+    "潼南": {
+      "latitude": 30.191,
+      "longitude": 105.8401
+    },
+    "澄迈": {
+      "latitude": 19.7386,
+      "longitude": 110.0072
+    },
+    "濮阳": {
+      "latitude": 35.7618,
+      "longitude": 115.0293
     },
     "灵武": {
       "geoname_id": 1803449,
@@ -1141,6 +1385,14 @@
       "latitude": 22.6305,
       "longitude": 110.14686
     },
+    "玉溪": {
+      "latitude": 24.3519,
+      "longitude": 102.5474
+    },
+    "玉环": {
+      "latitude": 28.1356,
+      "longitude": 121.2322
+    },
     "玉门": {
       "geoname_id": 1280757,
       "latitude": 39.83333,
@@ -1151,10 +1403,18 @@
       "latitude": 22.27694,
       "longitude": 113.56778
     },
+    "琅勃拉邦": {
+      "latitude": 19.8856,
+      "longitude": 102.1347
+    },
     "琼海": {
       "geoname_id": 1806488,
       "latitude": 19.2425,
       "longitude": 110.46417
+    },
+    "璧山": {
+      "latitude": 29.592,
+      "longitude": 106.2273
     },
     "白城": {
       "geoname_id": 2038569,
@@ -1206,20 +1466,52 @@
       "latitude": 38.04139,
       "longitude": 114.47861
     },
+    "石柱": {
+      "latitude": 29.9993,
+      "longitude": 108.1141
+    },
+    "石柱县": {
+      "latitude": 29.9993,
+      "longitude": 108.1141
+    },
     "石河子": {
       "geoname_id": 1529195,
       "latitude": 44.3023,
       "longitude": 86.03694
+    },
+    "磨丁": {
+      "latitude": 21.1794,
+      "longitude": 101.6683
+    },
+    "神农架": {
+      "latitude": 31.7444,
+      "longitude": 110.6758
     },
     "福州": {
       "geoname_id": 1810821,
       "latitude": 26.06139,
       "longitude": 119.30611
     },
+    "秀山": {
+      "latitude": 28.4479,
+      "longitude": 108.9969
+    },
     "秦皇岛": {
       "geoname_id": 1797595,
       "latitude": 39.94104,
       "longitude": 119.58936
+    },
+    "米林": {
+      "latitude": 29.2156,
+      "longitude": 94.2139
+    },
+    "綦江": {
+      "latitude": 29.0281,
+      "longitude": 106.6512
+    },
+    "纳堆": {
+      "latitude": 21.05,
+      "longitude": 101.7
     },
     "绍兴": {
       "geoname_id": 1795855,
@@ -1235,6 +1527,10 @@
       "geoname_id": 1800627,
       "latitude": 31.46784,
       "longitude": 104.68168
+    },
+    "老挝万荣": {
+      "latitude": 18.9235,
+      "longitude": 102.4478
     },
     "聊城": {
       "geoname_id": 1803834,
@@ -1255,6 +1551,10 @@
       "geoname_id": 1791236,
       "latitude": 31.35259,
       "longitude": 118.42947
+    },
+    "芦溪": {
+      "latitude": 27.6317,
+      "longitude": 114.0289
     },
     "苏州": {
       "geoname_id": 1886760,
@@ -1281,6 +1581,10 @@
       "latitude": 31.03361,
       "longitude": 112.20472
     },
+    "荣昌": {
+      "latitude": 29.4046,
+      "longitude": 105.5944
+    },
     "莆田": {
       "geoname_id": 1798449,
       "latitude": 25.43944,
@@ -1296,6 +1600,10 @@
       "latitude": 35.23929,
       "longitude": 115.47358
     },
+    "萍乡": {
+      "latitude": 27.6229,
+      "longitude": 113.8543
+    },
     "营口": {
       "geoname_id": 2033370,
       "latitude": 40.66472,
@@ -1310,6 +1618,14 @@
       "geoname_id": 13512502,
       "latitude": 23.36779,
       "longitude": 103.38212
+    },
+    "蒲城": {
+      "latitude": 34.9561,
+      "longitude": 109.5861
+    },
+    "蕲春": {
+      "latitude": 30.2261,
+      "longitude": 115.4361
     },
     "蚌埠": {
       "geoname_id": 1816440,
@@ -1356,6 +1672,10 @@
       "latitude": 34.03189,
       "longitude": 113.86299
     },
+    "贡嘎": {
+      "latitude": 29.2917,
+      "longitude": 90.985
+    },
     "贵港": {
       "geoname_id": 1809532,
       "latitude": 23.11603,
@@ -1370,6 +1690,10 @@
       "geoname_id": 7576887,
       "latitude": 24.40357,
       "longitude": 111.56675
+    },
+    "资溪": {
+      "latitude": 27.7042,
+      "longitude": 117.0658
     },
     "资阳": {
       "geoname_id": 1783683,
@@ -1446,6 +1770,10 @@
       "latitude": 36.60999,
       "longitude": 114.48764
     },
+    "邵东": {
+      "latitude": 27.2589,
+      "longitude": 111.7447
+    },
     "邵阳": {
       "geoname_id": 1816920,
       "latitude": 27.23818,
@@ -1476,6 +1804,10 @@
       "latitude": 30.39607,
       "longitude": 114.88655
     },
+    "酉阳": {
+      "latitude": 28.8412,
+      "longitude": 108.7677
+    },
     "酒泉": {
       "geoname_id": 1279945,
       "latitude": 39.74318,
@@ -1486,10 +1818,18 @@
       "latitude": 29.56026,
       "longitude": 106.55771
     },
+    "金华": {
+      "latitude": 29.0781,
+      "longitude": 119.6475
+    },
     "金昌": {
       "geoname_id": 1805733,
       "latitude": 38.50062,
       "longitude": 102.19379
+    },
+    "钟祥": {
+      "latitude": 31.1678,
+      "longitude": 112.5892
     },
     "钦州": {
       "geoname_id": 1797551,
@@ -1500,6 +1840,10 @@
       "geoname_id": 2034439,
       "latitude": 42.29306,
       "longitude": 123.84139
+    },
+    "铁门关": {
+      "latitude": 41.8272,
+      "longitude": 85.6011
     },
     "铜仁": {
       "geoname_id": 1792592,
@@ -1521,6 +1865,10 @@
       "latitude": 38.46806,
       "longitude": 106.27306
     },
+    "锡林郭勒": {
+      "latitude": 43.9334,
+      "longitude": 116.0482
+    },
     "锦州": {
       "geoname_id": 2036427,
       "latitude": 41.10778,
@@ -1531,10 +1879,22 @@
       "latitude": 32.21086,
       "longitude": 119.45508
     },
+    "长寿": {
+      "latitude": 29.8579,
+      "longitude": 107.0812
+    },
     "长春": {
       "geoname_id": 2038180,
       "latitude": 43.88,
       "longitude": 125.32278
+    },
+    "长汀": {
+      "latitude": 25.8339,
+      "longitude": 116.3575
+    },
+    "长沙": {
+      "latitude": 28.2278,
+      "longitude": 112.9389
     },
     "长治": {
       "geoname_id": 1808956,
@@ -1581,10 +1941,22 @@
       "latitude": 39.70842,
       "longitude": 76.17971
     },
+    "阿坝藏族羌族自治州": {
+      "latitude": 31.8994,
+      "longitude": 102.2247
+    },
+    "阿拉善": {
+      "latitude": 38.8519,
+      "longitude": 105.7289
+    },
     "陇南": {
       "geoname_id": 11778484,
       "latitude": 33.39791,
       "longitude": 104.91703
+    },
+    "陵水": {
+      "latitude": 18.506,
+      "longitude": 110.0372
     },
     "随州": {
       "geoname_id": 1793879,
@@ -1601,6 +1973,10 @@
       "latitude": 36.06488,
       "longitude": 120.38042
     },
+    "青铜峡": {
+      "latitude": 38.0208,
+      "longitude": 106.0747
+    },
     "鞍山": {
       "geoname_id": 2038632,
       "latitude": 41.12361,
@@ -1615,6 +1991,14 @@
       "geoname_id": 7910932,
       "latitude": 27.82511,
       "longitude": 99.70779
+    },
+    "香港": {
+      "latitude": 22.3193,
+      "longitude": 114.1694
+    },
+    "马桥河": {
+      "latitude": 44.8286,
+      "longitude": 130.5269
     },
     "马鞍山": {
       "geoname_id": 1801620,
@@ -1646,6 +2030,18 @@
       "latitude": 28.23333,
       "longitude": 117.0
     },
+    "麦园": {
+      "latitude": 28.6,
+      "longitude": 115.8
+    },
+    "黄冈": {
+      "latitude": 30.4535,
+      "longitude": 114.8724
+    },
+    "黄山": {
+      "latitude": 29.7147,
+      "longitude": 118.3375
+    },
     "黄石": {
       "geoname_id": 1807234,
       "latitude": 30.24706,
@@ -1655,6 +2051,10 @@
       "geoname_id": 2036973,
       "latitude": 50.24413,
       "longitude": 127.49016
+    },
+    "黔江": {
+      "latitude": 29.5336,
+      "longitude": 108.7709
     },
     "齐齐哈尔": {
       "geoname_id": 2035265,

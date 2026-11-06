@@ -44,7 +44,7 @@ class StationTests(unittest.TestCase):
 
     def test_official_time_values_and_separate_provenance(self):
         service = TransferStationService()
-        for code, minutes in [('NKH',15),('AOH',15),('SHH',30),('ZAF',60)]:
+        for code, minutes in [('NKH',15),('AOH',15),('SHH',30),('ZAF',20)]:
             with self.subTest(code=code):
                 station=service.validate_via([code])[0]
                 self.assertEqual(station.reference_min_minutes,minutes)

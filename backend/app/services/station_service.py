@@ -15,6 +15,24 @@ urllib3.disable_warnings()
 logger = logging.getLogger(__name__)
 
 class StationService:
+    PRIORITY_STATION_NAMES = (
+        "北京", "上海", "广州", "深圳", "杭州", "南京", "武汉", "成都", "重庆", "西安",
+        "天津", "苏州", "郑州", "长沙", "青岛", "宁波", "东莞", "无锡", "佛山", "合肥",
+        "福州", "厦门", "济南", "沈阳", "大连", "昆明", "哈尔滨", "长春", "南宁", "贵阳",
+        "石家庄", "太原", "南昌", "兰州", "乌鲁木齐", "海口", "三亚", "呼和浩特", "银川", "西宁",
+        "拉萨", "徐州", "温州", "金华", "洛阳", "宜昌", "襄阳", "桂林", "柳州", "赣州",
+        "上饶", "九江", "株洲", "衡阳", "怀化", "汕头", "湛江", "珠海", "惠州", "中山",
+        "常州", "南通", "扬州", "盐城", "连云港", "淮安", "绍兴", "嘉兴", "湖州", "台州",
+        "芜湖", "蚌埠", "安庆", "黄山", "阜阳", "泉州", "漳州", "龙岩", "莆田", "南平",
+        "烟台", "潍坊", "威海", "临沂", "济宁", "泰安", "淄博", "日照", "商丘", "新乡",
+        "安阳", "南阳", "信阳", "绵阳", "宜宾", "乐山", "泸州", "达州", "南充", "遵义",
+        "大理", "丽江", "曲靖", "宝鸡", "汉中", "延安", "榆林", "唐山", "保定", "秦皇岛",
+        "邯郸", "大同", "运城", "临汾", "包头", "赤峰", "通辽", "锦州", "丹东", "营口",
+        "鞍山", "吉林", "延吉", "齐齐哈尔", "牡丹江", "佳木斯", "大庆", "天水", "张掖", "敦煌",
+        "酒泉", "格尔木", "喀什", "伊宁", "吐鲁番", "库尔勒", "香港西九龙",
+    )
+    _PRIORITY_RANK = {name: idx for idx, name in enumerate(PRIORITY_STATION_NAMES)}
+
     def __init__(self):
         self.stations: List[StationInfo] = []
         self.name_to_code: Dict[str, str] = {}
@@ -99,6 +117,16 @@ class StationService:
         self.last_load_time = time.time()
         logger.info(f"Loaded {len(self.stations)} stations successfully.")
 
+    @classmethod
+    def _station_rank(cls, s: StationInfo) -> tuple:
+        if s.name in cls._PRIORITY_RANK:
+            return (0, cls._PRIORITY_RANK[s.name], len(s.name))
+        if s.city_name and s.name == s.city_name:
+            return (1, cls._PRIORITY_RANK.get(s.city_name, 9999), len(s.name))
+        if s.city_name in cls._PRIORITY_RANK:
+            return (2, cls._PRIORITY_RANK[s.city_name], len(s.name))
+        return (3, 9999, len(s.name))
+
     def search(self, keyword: str, limit: int = 20) -> List[StationInfo]:
         """按汉字、全拼、拼音简拼多维度检索"""
         self.ensure_loaded()
@@ -106,22 +134,32 @@ class StationService:
             # 默认返回主要城市热门站
             popular = ["北京", "上海", "广州", "深圳", "杭州", "南京", "武汉", "成都", "重庆", "西安"]
             res = [s for s in self.stations if s.name in popular]
+            res.sort(key=self._station_rank)
             return res[:limit]
 
         kw = keyword.strip().lower()
+        kw_compact = kw.replace(' ', '')
+        kw_stripped = re.sub(r'[站市]$', '', kw_compact) if len(kw_compact) > 1 else kw_compact
+        terms = {kw, kw_compact, kw_stripped} - {''}
+        name_exact = []
         exact_matches = []
         prefix_matches = []
         fuzzy_matches = []
 
         for s in self.stations:
-            if s.name == kw or s.pinyin == kw or s.pinyin_abbr == kw or s.telecode.lower() == kw or s.city_name == kw:
+            if s.name in terms or s.telecode.lower() in terms:
+                name_exact.append(s)
+            elif s.pinyin in terms or s.pinyin_abbr in terms or (s.city_name and s.city_name in terms):
                 exact_matches.append(s)
-            elif s.name.startswith(kw) or s.pinyin.startswith(kw) or s.pinyin_abbr.startswith(kw) or (s.city_name or '').startswith(kw):
+            elif any(s.name.startswith(t) or s.pinyin.startswith(t) or s.pinyin_abbr.startswith(t) or (s.city_name or '').startswith(t) for t in terms):
                 prefix_matches.append(s)
-            elif kw in s.name or kw in s.pinyin or kw in s.pinyin_abbr:
+            elif any(t in s.name or t in s.pinyin or t in s.pinyin_abbr for t in terms):
                 fuzzy_matches.append(s)
 
-        combined = exact_matches + prefix_matches + fuzzy_matches
+        name_exact.sort(key=self._station_rank)
+        exact_matches.sort(key=self._station_rank)
+        prefix_matches.sort(key=self._station_rank)
+        combined = name_exact + exact_matches + prefix_matches + fuzzy_matches
         # 去重保持顺序
         seen = set()
         result = []
@@ -135,7 +173,14 @@ class StationService:
 
     def get_code(self, name: str) -> Optional[str]:
         self.ensure_loaded()
-        return self.name_to_code.get(name)
+        if not name:
+            return None
+        cleaned = name.strip()
+        if cleaned in self.name_to_code:
+            return self.name_to_code[cleaned]
+        if len(cleaned) > 1 and cleaned[-1] in ('站', '市') and cleaned[:-1] in self.name_to_code:
+            return self.name_to_code[cleaned[:-1]]
+        return None
 
     def city_stations(self, anchor_code: str) -> List[StationInfo]:
         """Use the official dictionary city ID, never a station-name prefix guess.
@@ -165,7 +210,13 @@ class StationService:
         if anchor is None:
             raise ValueError('无法识别车站，请从站点提示中选择')
         city = anchor.city_name or anchor.name
-        aliases = {'武汉': {'汉口', '武昌'}}.get(city, set())
+        aliases = {
+            '武汉': {'汉口', '武昌'},
+            '北京': {'清河'},
+            '深圳': {'福田', '光明城'},
+            '重庆': {'沙坪坝'},
+            '广州': {'新塘', '庆盛'},
+        }.get(city, set())
         defaults = [s.telecode for s in choices if s.telecode == anchor_code
                     or s.name.startswith(city) or s.name in aliases]
         return dict(city_name=city, stations=choices, default_station_codes=defaults)

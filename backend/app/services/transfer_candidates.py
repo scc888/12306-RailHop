@@ -124,6 +124,8 @@ class TransferCandidateDiscovery:
         else:
             for a in origin_queries:
                 for b in destination_queries:
+                    if max_trains > 0 and len(seen_trains) >= max_trains:
+                        break
                     direct = run('candidate_trains', request.train_date, a, b,
                         lambda timeout, a=a, b=b: self.gateway.candidate_trains(request.train_date, a, b, timeout))
                     if direct is None:
@@ -136,6 +138,8 @@ class TransferCandidateDiscovery:
             pairs = [(a, code, origins, {code}) for a in origin_queries]
             pairs += [(code, b, {code}, destinations) for b in destination_queries]
             for a, b, starts, ends in pairs:
+                if max_trains > 0 and len(seen_trains) >= max_trains:
+                    break
                 trains = run('candidate_trains', request.train_date, a, b,
                     lambda timeout, a=a, b=b: self.gateway.candidate_trains(request.train_date, a, b, timeout))
                 if trains is None:

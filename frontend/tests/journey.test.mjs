@@ -47,8 +47,12 @@ test('同车复制保留跨日、逐段席别和精确金额，不保证不下�
 test('精确站名优先于城市和拼音，歧义简拼不能选第一个站',()=>{
   const stations=[{name:'上海虹桥',telecode:'AOH',pinyin:'shanghaihongqiao',pinyin_abbr:'shhq',city_name:'上海',city_code:'SHH'}, {name:'上海',telecode:'SHH',pinyin:'shanghai',pinyin_abbr:'sh',city_name:'上海',city_code:'SHH'}]
   assert.equal(findExactStation(stations,'上海').telecode,'SHH')
+  assert.equal(findExactStation(stations,'上海站').telecode,'SHH')
+  assert.equal(findExactStation(stations,'上海市','city').telecode,'SHH')
   assert.equal(findExactStation(stations,'aoh').telecode,'AOH')
   assert.equal(findExactStation(stations,'Shanghai').telecode,'SHH')
+  assert.equal(findExactStation([{name:'毕节',telecode:'BIJ',pinyin_abbr:'bj',city_name:'毕节',city_code:'bj1'},{name:'北京',telecode:'BJP',pinyin_abbr:'bj',city_name:'北京',city_code:'bj'}],'bj','city').telecode,'BJP')
+  assert.throws(()=>findExactStation([{name:'深圳',telecode:'SZQ',pinyin_abbr:'sz',city_name:'深圳',city_code:'sz1'},{name:'苏州',telecode:'SZH',pinyin_abbr:'sz',city_name:'苏州',city_code:'sz2'}],'sz','city'),/深圳、苏州/)
   assert.throws(()=>findExactStation(stations,'上'),/无法识别/)
   assert.throws(()=>findExactStation([{name:'甲',telecode:'AAA',pinyin_abbr:'aa'},{name:'乙',telecode:'BBB',pinyin_abbr:'aa'}],'aa'),/多个车站/)
 })

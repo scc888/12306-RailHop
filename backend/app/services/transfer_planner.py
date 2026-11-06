@@ -7,7 +7,7 @@ from collections import OrderedDict
 from datetime import datetime, timedelta
 from ..config import settings
 from ..models.transfer_schemas import TransferConnection, TransferPlan, TransferSearchMeta, TransferSearchResult
-from .client_12306 import RailwayQueryError
+from .client_12306 import RailwayQueryError, is_query_cancelled, wait_unless_cancelled
 from .transfer_ticket_gateway import CST
 from .station_service import station_service
 from .transfer_candidates import TransferCandidateDiscovery
@@ -16,10 +16,10 @@ logger = logging.getLogger(__name__)
 
 
 class TransferPlanner:
-    def __init__(self, stations, gateway, limits=None, sleep_fn=time.sleep):
+    def __init__(self, stations, gateway, limits=None, sleep_fn=wait_unless_cancelled):
         self.stations = stations
         self.gateway = gateway
-        self.sleep = sleep_fn
+        self.sleep = sleep_fn or wait_unless_cancelled
         self.cache = OrderedDict()
         self.limits = dict(max_candidates=settings.TRANSFER_MAX_CANDIDATES,
             max_queries=settings.TRANSFER_MAX_QUERIES, max_seconds=settings.TRANSFER_MAX_SECONDS,
@@ -83,7 +83,7 @@ class TransferPlanner:
             self.limits['max_seconds'] if budget_seconds is None else max(0, budget_seconds))
 
         def expired():
-            if time.monotonic() >= deadline:
+            if is_query_cancelled() or time.monotonic() >= deadline:
                 truncated('time_limit')
                 return True
             return False
@@ -126,7 +126,8 @@ class TransferPlanner:
             if next_paths and (meta.query_count >= stage_query_ceiling or time.monotonic() >= stage_deadline):
                 truncated('stage_budget')
                 return None
-            if last_request_at is not None:
+            cached_query = hasattr(self.gateway, 'is_cached') and self.gateway.is_cached('tickets', day, a, b)
+            if last_request_at is not None and not cached_query:
                 pause = self.limits['request_interval'] - (time.monotonic() - last_request_at)
                 if pause > 0:
                     active_deadline = stage_deadline if next_paths else deadline
@@ -179,7 +180,10 @@ class TransferPlanner:
             if meta.query_count >= self.limits['max_queries']:
                 truncated('query_limit')
                 return None
-            if last_request_at is not None:
+            cached_query = hasattr(self.gateway, 'is_cached') and self.gateway.is_cached(
+                'tickets' if kind == 'candidate_trains' else 'stops', day, a, b,
+                kind[1] if isinstance(kind, tuple) else None)
+            if last_request_at is not None and not cached_query:
                 pause = self.limits['request_interval'] - (time.monotonic() - last_request_at)
                 if pause > 0:
                     self.sleep(min(pause, max(0, discovery_deadline - time.monotonic())))
@@ -215,10 +219,13 @@ class TransferPlanner:
                     sources.setdefault(code, []).extend(kinds)
                 truncated('dynamic_discovery')
                 meta.coverage_notes.append('候选来自相关列车经停站及全车站字典的方向探测；无直达车次仍尝试发现候选，未遍历全国全部车次和站对。')
-            for reference in self.stations.search('', 10000):
-                code = reference.station_code
-                if code not in origins | destinations and (route_policy is None or route_policy.candidate(code)):
-                    sources.setdefault(code, []).append('convenience_reference')
+            has_selected_stops = first_train is not None and transfer_limit == 1 and any(
+                'selected_train_stops' in kinds for kinds in sources.values())
+            if not has_selected_stops:
+                for reference in self.stations.search('', 10000):
+                    code = reference.station_code
+                    if code not in origins | destinations and (route_policy is None or route_policy.candidate(code)):
+                        sources.setdefault(code, []).append('convenience_reference')
             auto = [code for code in sources if code not in required]
             # Discovery insertion order reflects timetable and route diversity;
             # the reference catalogue already has its own priority order.
@@ -242,12 +249,39 @@ class TransferPlanner:
         paths = [([], [], [])]  # legs, intermediate station codes, connection records
         complete = {}
         expanded = 0
+
+        def is_anchor_first(item):
+            if first_train is None:
+                return False
+            anchor = first_train.selection
+            return (
+                item.train_no == anchor.train_no
+                and item.run_date == anchor.run_date
+                and item.from_station == anchor.from_station
+                and item.departure_at == first_train.departure_at
+                and item.arrival_at < first_train.arrival_at
+            )
+
+        def is_anchor_final(item):
+            if first_train is None or first_train.arrival_at is None:
+                return False
+            anchor = first_train.selection
+            return (
+                item.train_no == anchor.train_no
+                and item.run_date == anchor.run_date
+                and item.to_station == anchor.to_station
+                and item.arrival_at == first_train.arrival_at
+                and item.departure_at > first_train.departure_at
+            )
+
         for stage in range(transfer_limit + 1):
             if expired() or not paths:
                 break
             remaining_stages = transfer_limit + 1 - stage
             remaining_queries = max(0, self.limits['max_queries'] - meta.query_count)
+            stage_start_queries = meta.query_count
             stage_query_ceiling = meta.query_count + (remaining_queries + remaining_stages - 1) // remaining_stages
+            reserved_continuations = min(4, max(1, (stage_query_ceiling - stage_start_queries) // 6))
             stage_started = time.monotonic()
             stage_deadline = stage_started + max(0, deadline - stage_started) / remaining_stages
             next_paths = []
@@ -283,7 +317,9 @@ class TransferPlanner:
                     starts = [legs[-1].to_station] if legs else ([first_train.selection.from_station]
                         if first_train is not None else
                         (sorted(origins) if explicit_origins is not None else [request.from_station]))
-                    ends = (sorted(destinations) if explicit_destinations is not None else [request.to_station]) if final else [target]
+                    need_anchor_final = (final and first_train is not None and bool(legs) and not is_anchor_first(legs[0]))
+                    ends = ([first_train.selection.to_station] if need_anchor_final else
+                        ((sorted(destinations) if explicit_destinations is not None else [request.to_station]) if final else [target]))
                     for start in starts:
                         for end in ends:
                             if start == end:
@@ -308,7 +344,7 @@ class TransferPlanner:
                                 if earliest.date() <= day and (horizon is None or earliest < horizon):
                                     lower_bound = (earliest - legs[0].departure_at).total_seconds() if legs else 0
                                     query_origins = frozenset({start} if legs or first_train is not None else origins)
-                                    query_destinations = frozenset(destinations if final else {end})
+                                    query_destinations = frozenset({first_train.selection.to_station} if need_anchor_final else (destinations if final else {end}))
                                     key = (day, start, end, query_origins, query_destinations)
                                     rank = (lower_bound, target_rank, prefix_rank)
                                     if key not in jobs:
@@ -329,9 +365,9 @@ class TransferPlanner:
                 # At a max-depth search, first give existing prefixes a chance
                 # to finish. Otherwise the N*N continuation pairs can consume
                 # the budget before the Nth one-transfer route is examined.
-                # Retain a query in this stage for discovering a deeper prefix.
+                # Retain queries in this stage for discovering deeper prefixes.
                 finishing = (finish_waiting and finish_queue and
-                    meta.query_count < stage_query_ceiling - 1 and time.monotonic() < stage_deadline)
+                    meta.query_count < stage_query_ceiling - reserved_continuations and time.monotonic() < stage_deadline)
                 _, serial, (day, start, target, query_origins, query_destinations), consumers = heapq.heappop(
                     finish_queue if finishing else queue)
                 if serial in processed:
@@ -342,7 +378,9 @@ class TransferPlanner:
                     break
                 if consumers[0][-1]:
                     finish_waiting.difference_update(id(consumer[0]) for consumer in consumers)
+                has_anchor_first = first_train is not None and any(is_anchor_first(x) and x.seats for x in values)
                 for legs, via, connections, earliest, horizon, final in consumers:
+                    feeder_admitted = 0
                     for item in values:
                         if expired():
                             break
@@ -354,11 +392,18 @@ class TransferPlanner:
                         if item.from_station not in query_origins or item.to_station not in query_destinations:
                             continue
                         if not legs and first_train is not None:
-                            anchor = first_train.selection
-                            if (item.train_no != anchor.train_no or item.run_date != anchor.run_date
-                                    or item.from_station != anchor.from_station
-                                    or item.departure_at != first_train.departure_at
-                                    or item.arrival_at >= first_train.arrival_at):
+                            if has_anchor_first or transfer_limit > 1 or first_train.arrival_at is None:
+                                if not is_anchor_first(item):
+                                    continue
+                            else:
+                                anchor = first_train.selection
+                                if (item.train_no == anchor.train_no
+                                        or item.from_station != anchor.from_station
+                                        or item.arrival_at >= first_train.arrival_at
+                                        or feeder_admitted >= 2):
+                                    continue
+                        elif legs and first_train is not None and not is_anchor_first(legs[0]):
+                            if not final or not is_anchor_final(item):
                                 continue
                         if item.departure_at.date() != day or item.departure_at < earliest:
                             continue
@@ -368,6 +413,8 @@ class TransferPlanner:
                         if item.arrival_at > end_limit:
                             truncated('horizon_limit')
                             continue
+                        if not legs and first_train is not None and not has_anchor_first:
+                            feeder_admitted += 1
                         if any(previous.train_no == item.train_no and
                                (previous.run_date is None or item.run_date is None or previous.run_date == item.run_date)
                                for previous in legs):
@@ -397,6 +444,25 @@ class TransferPlanner:
                                     continue
                                 plan.route_assessment = assessment
                             complete[plan.id] = plan
+                            if self.limits['max_results'] >= 10:
+                                group_sig = (
+                                    tuple(c.station.station_code for c in plan.connections),
+                                    plan.legs[-1].train_no,
+                                    plan.legs[0].from_station,
+                                    plan.legs[-1].to_station,
+                                )
+                                group_keys = [
+                                    k for k, p in complete.items()
+                                    if (
+                                        tuple(c.station.station_code for c in p.connections),
+                                        p.legs[-1].train_no,
+                                        p.legs[0].from_station,
+                                        p.legs[-1].to_station,
+                                    ) == group_sig
+                                ]
+                                if len(group_keys) > 3:
+                                    worst_in_group = max(group_keys, key=lambda key: self._sort_key(complete[key], request.sort_by))
+                                    del complete[worst_in_group]
                             if len(complete) > self.limits['max_results']:
                                 truncated('result_limit')
                                 worst = max(complete, key=lambda key: self._sort_key(complete[key], request.sort_by))

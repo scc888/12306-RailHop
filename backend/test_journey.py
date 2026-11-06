@@ -183,9 +183,10 @@ class JourneyTests(unittest.TestCase):
             self.assertLessEqual(call.kwargs['budget_seconds'],16)
             self.assertLessEqual(call.kwargs['max_queries'],40)
 
-    def test_api_validation_busy_and_release(self):
+    def test_api_validation_and_overlapping_queries(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Event
         from app.api.journey_routes import get_journey_service
-        from app.api.transfer_routes import transfer_lock
         app.dependency_overrides[get_journey_service]=lambda:self.service
         original=self.service.search
         self.service.search=lambda req:original(req,now=NOW)
@@ -195,12 +196,22 @@ class JourneyTests(unittest.TestCase):
             self.assertEqual(client.post('/api/journeys/query',json=body).status_code,200)
             self.assertEqual(client.post('/api/journeys/query',json=body|{'mode':'bad'}).status_code,422)
             self.assertEqual(client.post('/api/journeys/query',json=body|{'train_date':'2026-10-25'}).status_code,400)
-            transfer_lock.acquire()
-            try:
-                self.assertEqual(client.post('/api/journeys/query',json=body).status_code,429)
-            finally:
-                transfer_lock.release()
-            self.assertFalse(transfer_lock.locked())
+            started, release = Event(), Event()
+            def search(req):
+                if req.mode == 'all':
+                    started.set()
+                    release.wait(5)
+                return original(req, now=NOW)
+            self.service.search = search
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                first = executor.submit(client.post, '/api/journeys/query', json=body | {'mode':'all'})
+                try:
+                    self.assertTrue(started.wait(2))
+                    second = executor.submit(client.post, '/api/journeys/query', json=body)
+                    self.assertEqual(second.result(timeout=2).status_code, 200)
+                finally:
+                    release.set()
+                self.assertEqual(first.result(timeout=2).status_code, 200)
         finally:
             app.dependency_overrides.clear()
 

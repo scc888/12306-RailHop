@@ -3,6 +3,14 @@ set -Eeuo pipefail
 
 PACKAGE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PORT="${PORT:-8080}"
+CACHE_ENV_FILE="${CACHE_ENV_FILE:-/etc/railhop/cache.env}"
+DOCKER_NETWORK="${DOCKER_NETWORK:-}"
+if [[ -z "$DOCKER_NETWORK" && -f /etc/railhop/docker-network ]]; then
+    DOCKER_NETWORK="$(cat /etc/railhop/docker-network)"
+fi
+if [[ -n "$DOCKER_NETWORK" ]]; then
+    docker network inspect "$DOCKER_NETWORK" >/dev/null
+fi
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 [[ "$(id -u)" == 0 ]] || fail 'Run this script as root: sudo bash deploy-docker.sh'
@@ -31,11 +39,14 @@ if [ "$(docker ps -aq -f name=12306-railhop)" ]; then
     docker rm 12306-railhop || true
 fi
 
-docker run -d \
-    --name 12306-railhop \
-    --restart unless-stopped \
-    -p "${PORT}:8080" \
-    12306-railhop:latest
+container_args=(--name 12306-railhop --restart unless-stopped -p "${PORT}:8080")
+if [[ -f "$CACHE_ENV_FILE" ]]; then
+    container_args+=(--env-file "$CACHE_ENV_FILE")
+fi
+if [[ -n "$DOCKER_NETWORK" ]]; then
+    container_args+=(--network "$DOCKER_NETWORK")
+fi
+docker run -d "${container_args[@]}" 12306-railhop:latest
 
 echo "[4/4] Verifying container health..."
 ready=0

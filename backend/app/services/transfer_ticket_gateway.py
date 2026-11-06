@@ -55,6 +55,9 @@ class TransferTicketGateway:
         self.client = client or Ticket12306Client()
         self.last_issues = []
 
+    def is_cached(self, kind, day, a, b, train_no=None):
+        return self.client.has_cached_query(kind, day.isoformat(), a, b, train_no)
+
     def candidate_trains(self, train_date, from_code, to_code, timeout_seconds):
         """Include unsold trains: a sold-out full interval can have buyable prefixes."""
         return self.client.query_tickets_strict(train_date.isoformat(), from_code, to_code,

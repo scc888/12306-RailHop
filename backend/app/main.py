@@ -11,6 +11,7 @@ from .api.transfer_routes import router as transfer_router
 from .api.journey_routes import router as journey_router
 from .services.station_service import station_service
 from .services.client_12306 import client_12306
+from .services.query_cache import query_cache
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,6 +30,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Error during startup preheat: {e}")
     yield
+    query_cache.close()
     logger.info("Shutting down 12306 Tool Backend Service...")
 
 app = FastAPI(

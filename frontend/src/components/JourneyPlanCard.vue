@@ -11,7 +11,7 @@
         <div class="text-right"><p class="text-xs text-slate-500">所选席别合计</p><p class="mt-1 text-xl font-bold text-blue-700" data-testid="total-price">{{ formatMoney(fare.totalPriceFen) }}</p><p v-if="fare.totalPriceFen==null" class="text-xs text-amber-800">已知 {{ formatMoney(fare.knownPriceFen) }}</p></div>
       </div>
     </div>
-    <div class="plan-trip-summary">
+    <div class="plan-trip-summary" :class="{'cursor-pointer':collapsible}" @click="onSummaryClick">
       <TrainFront class="w-4 h-4 shrink-0" aria-hidden="true" /><p>{{ tripSummary }}</p>
       <button v-if="collapsible" type="button" class="plan-details-toggle" :aria-expanded="expanded" :aria-controls="detailsId" @click="expanded=!expanded">
         {{ expanded ? '收起详情' : '展开详情' }}<ChevronDown class="w-4 h-4" :class="{'rotate-180':expanded}" aria-hidden="true" />
@@ -82,6 +82,10 @@ const emit=defineEmits(['seat-change','update:expanded'])
 const detailsId=useId()
 const expanded=computed({get:()=>props.expanded,set:value=>emit('update:expanded',value)})
 const collapsible=computed(()=>props.plan.kind==='same_train' || props.plan.kind==='transfer')
+function onSummaryClick(event){
+  if(!collapsible.value || event.target.closest('button,a,input,select,label'))return
+  expanded.value=!expanded.value
+}
 const compact=computed(()=>compactJourneyFacts(props.plan))
 const waitDifference=computed(()=>(props.plan.connections || []).reduce((n,c)=>n+c.wait_minutes,0)-(props.baseline?.connections || []).reduce((n,c)=>n+c.wait_minutes,0))
 const fare=computed(()=>calculateFare(props.plan.legs,props.plan.selected_seat_codes))

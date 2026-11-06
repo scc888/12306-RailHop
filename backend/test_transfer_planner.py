@@ -61,6 +61,19 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(len(result.plans),1)
         self.assertEqual(result.plans[0].legs[0],good)
 
+        # When the selected train is sold out on Leg 1 (AAA -> BBB), a feeder train on AAA -> BBB
+        # can connect to the selected train on Leg 2 (BBB -> CCC), but never to an unrelated Leg 2.
+        feeder = leg('AAA','BBB','2026-10-10T07:30','2026-10-10T08:30','G100')
+        anchor_final = leg('BBB','CCC','2026-10-10T09:00','2026-10-10T12:00','K1')
+        anchor_final.train_no, anchor_final.run_date = 'physical-1', date(2026,10,9)
+        unrelated_final = leg('BBB','CCC','2026-10-10T09:00','2026-10-10T11:30','G200')
+        request_ccc = TransferQueryRequest(from_station='AAA',to_station='CCC',train_date='2026-10-10')
+        planner_feeder = TransferPlanner(TransferStationService(entries=[station('BBB')]),
+            Samples([feeder, anchor_final, unrelated_final]), sleep_fn=lambda _:None)
+        result_feeder = planner_feeder.search(request_ccc, now=NOW, first_train=anchor)
+        self.assertEqual(len(result_feeder.plans), 1)
+        self.assertEqual([l.train_code for l in result_feeder.plans[0].legs], ['G100', 'K1'])
+
     def search(self, legs, stations=None, limits=None, **kwargs):
         gateway = Samples(legs)
         planner = TransferPlanner(TransferStationService(entries=stations or [station('BBB')]), gateway,

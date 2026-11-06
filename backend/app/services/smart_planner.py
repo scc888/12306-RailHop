@@ -13,7 +13,7 @@ from typing import List, Optional
 from ..models.schemas import SmartPlan, PlanSegment, TrainTicketInfo
 from ..models.transfer_schemas import SEAT_NAMES, TransferSeat, TransferLeg
 from ..models.journey_schemas import ShortTicketOption
-from .client_12306 import client_12306, RailwayQueryError
+from .client_12306 import client_12306, RailwayQueryError, is_query_cancelled
 from .station_service import station_service
 from .transfer_ticket_gateway import CST, has_ticket, parse_price_fen
 
@@ -21,6 +21,9 @@ SEAT_PRIORITY = ['ze', 'zy', 'yw', 'rw', 'srrb', 'swz', 'gr', 'rz', 'yz', 'wz']
 
 
 class SmartRoutePlanner:
+    def __init__(self, client=None):
+        self.client = client
+
     def calculate_smart_plans(self, train_date: str, train_code: str, train_no: str,
                               from_code: str, to_code: str,
                               allowed_seats: Optional[List[str]] = None,
@@ -58,7 +61,7 @@ class SmartRoutePlanner:
 
         def room(network=False):
             reason = None
-            if time.monotonic() >= deadline:
+            if is_query_cancelled() or time.monotonic() >= deadline:
                 reason = '查询时间达到上限'
             elif network and meta['query_count'] >= max_queries:
                 reason = '查询次数达到上限'
@@ -70,6 +73,7 @@ class SmartRoutePlanner:
             return True
 
         cache = {}
+        railway = self.client or client_12306
 
         def query(day, a, b):
             key = (day.isoformat(), a, b)
@@ -80,7 +84,7 @@ class SmartRoutePlanner:
                     return []
                 meta['query_count'] += 1
                 try:
-                    cache[key] = client_12306.query_tickets_strict(
+                    cache[key] = railway.query_tickets_strict(
                         *key, timeout_seconds=max(.001, deadline - time.monotonic()))
                 except RailwayQueryError:
                     meta['failed_queries'].append(dict(train_date=key[0], from_station=a,
@@ -115,7 +119,7 @@ class SmartRoutePlanner:
             return finish()
         meta['query_count'] += 1
         try:
-            stops = client_12306.query_train_stops_strict(
+            stops = railway.query_train_stops_strict(
                 train_no, from_code, to_code, train_date,
                 timeout_seconds=max(.001, deadline - time.monotonic()))
         except RailwayQueryError:

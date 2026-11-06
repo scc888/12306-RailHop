@@ -38,38 +38,56 @@ class TransferApiTests(unittest.TestCase):
 
     def test_unlisted_manual_station_through_api_has_unknown_status_and_no_false_source(self):
         from app.api.transfer_routes import get_transfer_planner
-        samples = Samples([leg('SHH','ENH','2026-10-10T08:00','2026-10-10T09:00'),
-                           leg('ENH','BJP','2026-10-10T10:00','2026-10-10T12:00','G2')])
+        samples = Samples([leg('SHH','ASH','2026-10-10T08:00','2026-10-10T09:00'),
+                           leg('ASH','BJP','2026-10-10T10:00','2026-10-10T12:00','G2')])
         planner = TransferPlanner(TransferStationService(), samples, limits={'request_interval':0})
         original = planner.search
         planner.search = lambda request, **kwargs: original(request, now=NOW, **kwargs)
         app.dependency_overrides[get_transfer_planner] = lambda: planner
         try:
-            response = self.client.post('/api/transfers/query', json=self.body | dict(ordered_via_stations=['ENH']))
+            response = self.client.post('/api/transfers/query', json=self.body | dict(ordered_via_stations=['ASH']))
             self.assertEqual(response.status_code,200)
             payload = response.json()['data']
             connection = payload['plans'][0]['connections'][0]
-            self.assertEqual(connection['station']['station_name'],'合肥南')
+            self.assertEqual(connection['station']['station_name'],'安亭北')
             self.assertFalse(connection['station']['convenient_transfer_confirmed'])
             self.assertEqual(connection['required_minutes'],60)
             self.assertIsNone(connection['source_url'])
             self.assertIsNone(connection['station']['verified_at'])
-            self.assertEqual(payload['meta']['candidate_sources']['ENH'],['manual'])
+            self.assertEqual(payload['meta']['candidate_sources']['ASH'],['manual'])
         finally:
             app.dependency_overrides.clear()
 
-    def test_validation_and_busy_release(self):
-        from app.api.transfer_routes import transfer_lock
+    def test_validation_and_overlapping_queries(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Event
+        from app.api.transfer_routes import get_transfer_planner
         self.assertEqual(self.client.post('/api/transfers/query', json=self.body | dict(min_transfer_minutes=0)).status_code, 422)
         self.assertEqual(self.client.post('/api/transfers/query', json=self.body | dict(ordered_via_stations=['AAA'])).status_code, 400)
         self.assertEqual(self.client.post('/api/transfers/query', json=self.body | dict(from_station='AAA')).status_code, 400)
-        transfer_lock.acquire()
+        started, release = Event(), Event()
+        planner = TransferPlanner(TransferStationService(), Samples([]), sleep_fn=lambda _: None)
+        original = planner.search
+        def search(request, **kwargs):
+            if request.min_transfer_minutes == 10:
+                started.set()
+                release.wait(5)
+            return original(request, now=NOW, **kwargs)
+        planner.search = search
+        app.dependency_overrides[get_transfer_planner] = lambda: planner
         try:
-            self.assertEqual(self.client.post('/api/transfers/query', json=self.body).status_code, 429)
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                first = executor.submit(self.client.post, '/api/transfers/query', json=self.body | {'min_transfer_minutes':10})
+                try:
+                    self.assertTrue(started.wait(2))
+                    second = executor.submit(self.client.post, '/api/transfers/query', json=self.body)
+                    self.assertEqual(second.result(timeout=2).status_code, 200)
+                finally:
+                    release.set()
+                self.assertEqual(first.result(timeout=2).status_code, 200)
         finally:
-            transfer_lock.release()
+            app.dependency_overrides.clear()
         self.assertEqual(self.client.post('/api/transfers/query', json=self.body | dict(ordered_via_stations=['AAA'])).status_code, 400)
-        self.assertFalse(transfer_lock.locked())
 
     def test_personal_time_overrides_zhengzhou_official_reference(self):
         from app.api.transfer_routes import get_transfer_planner
@@ -90,7 +108,7 @@ class TransferApiTests(unittest.TestCase):
                     if plans:
                         connection = plans[0]['connections'][0]
                         self.assertEqual(connection['required_minutes'], selected)
-                        self.assertEqual(connection['official_min_minutes'], 60)
+                        self.assertEqual(connection['official_min_minutes'], 20)
         finally:
             app.dependency_overrides.clear()
 

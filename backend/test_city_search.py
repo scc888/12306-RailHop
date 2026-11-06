@@ -62,6 +62,35 @@ class CitySearchTests(unittest.TestCase):
         service.ensure_loaded()
         codes = {s.telecode for s in service.city_stations('WHN')}
         self.assertTrue({'WHN', 'HKN', 'WCN'}.issubset(codes))
+        self.assertIn('QIP', service.station_scope('BJP')['default_station_codes'])
+        self.assertIn('NZQ', service.station_scope('SZQ')['default_station_codes'])
+        self.assertIn('CYW', service.station_scope('CQW')['default_station_codes'])
+        self.assertEqual(service.search('上海站')[0].telecode, 'SHH')
+        self.assertEqual(service.get_code('南京南站'), 'NKH')
+        self.assertEqual(service.search('sz')[0].name, '深圳')
+        self.assertEqual(service.search('bj')[0].name, '北京')
+        self.assertEqual(service.search('wh')[0].name, '武汉')
+        self.assertEqual(service.search('gz')[0].name, '广州')
+
+    def test_all_real_cities_have_coordinates_and_superseded_search_cancels(self):
+        from app.services.route_policy import RoutePolicy
+        from app.services.client_12306 import register_active_search, unregister_active_search, is_query_cancelled
+        service = StationService()
+        service.ensure_loaded()
+        policy = RoutePolicy('SHH', 'GZQ', service)
+        for code in ('CWQ', 'UUH', 'LLF', 'JBH'):
+            self.assertIsNotNone(policy.point(code))
+        ev1, tok1 = register_active_search()
+        try:
+            self.assertFalse(is_query_cancelled())
+            ev2, tok2 = register_active_search()
+            try:
+                self.assertTrue(ev1.is_set())
+                self.assertFalse(ev2.is_set())
+            finally:
+                unregister_active_search(ev2, tok2)
+        finally:
+            unregister_active_search(ev1, tok1)
 
     def test_gateway_city_filter_keeps_actual_station_identity(self):
         alternate = row(dest='VNP').split('|')

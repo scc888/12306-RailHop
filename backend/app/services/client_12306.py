@@ -4,6 +4,8 @@
 import time
 import re
 import logging
+from contextvars import ContextVar
+from threading import Event, Lock
 import requests
 import urllib3
 from typing import List, Dict, Optional, Tuple
@@ -15,16 +17,71 @@ from .railway_diagnostics import RailwayDiagnostics
 urllib3.disable_warnings()
 logger = logging.getLogger(__name__)
 
+current_cancel_event: ContextVar[Optional[Event]] = ContextVar('current_cancel_event', default=None)
+_active_search_lock = Lock()
+_active_search_events: set[Event] = set()
+
+
+def register_active_search() -> Tuple[Event, object]:
+    """Cancel any superseded in-flight search and register a fresh cancellation event."""
+    event = Event()
+    with _active_search_lock:
+        for old_event in _active_search_events:
+            old_event.set()
+        _active_search_events.add(event)
+    token = current_cancel_event.set(event)
+    return event, token
+
+
+def unregister_active_search(event: Event, token: object) -> None:
+    with _active_search_lock:
+        _active_search_events.discard(event)
+    try:
+        current_cancel_event.reset(token)
+    except ValueError:
+        pass
+
+
+def is_query_cancelled() -> bool:
+    event = current_cancel_event.get()
+    return bool(event and event.is_set())
+
+
+def wait_unless_cancelled(seconds: float) -> None:
+    if seconds <= 0:
+        return
+    event = current_cancel_event.get()
+    if event is not None:
+        event.wait(seconds)
+    else:
+        time.sleep(seconds)
+
+
 class RailwayQueryError(RuntimeError):
     """An upstream failure, distinct from a successful empty ticket query."""
 
+
 class Ticket12306Client:
-    def __init__(self):
+    _shared_lock = Lock()
+    _last_live_request_at: float = 0.0
+
+    def __init__(self, cache=None):
+        self.cache = cache
         self.session = requests.Session()
         self._setup_session()
         self._cached_c_url: str = "leftTicket/queryG"
         self._stops_cache: Dict[str, Tuple[float, List[TrainStopInfo]]] = {}
         self._initialized: bool = False
+
+    def _pace_live_request(self) -> None:
+        if self.cache is None or getattr(self.session.get, '__module__', '').startswith('unittest.mock'):
+            return
+        with self._shared_lock:
+            now = time.monotonic()
+            gap = 0.06 - (now - Ticket12306Client._last_live_request_at)
+            if gap > 0:
+                wait_unless_cancelled(gap)
+            Ticket12306Client._last_live_request_at = time.monotonic()
 
     def _setup_session(self) -> None:
         self.session.headers.update({
@@ -34,6 +91,26 @@ class Ticket12306Client:
             "Accept": "*/*",
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
         })
+
+    def has_cached_query(self, kind, day, from_code, to_code, train_no=None):
+        parts = ([day, from_code, to_code, 'ADULT'] if kind == 'tickets' else
+                 [train_no, day, from_code, to_code])
+        model = TrainTicketInfo if kind == 'tickets' else TrainStopInfo
+        return self._cached_models(kind, parts, model) is not None
+
+    def _cached_models(self, kind, parts, model):
+        if self.cache is None or (kind == 'tickets' and settings.TICKET_CACHE_SECONDS <= 0):
+            return None
+        cached = self.cache.get(kind, parts)
+        if cached is None:
+            return None
+        try:
+            if not isinstance(cached, list):
+                raise ValueError()
+            return [model.model_validate(item) for item in cached]
+        except (ValueError, TypeError):
+            logger.warning('Ignoring malformed railway cache entry: kind=%s', kind)
+            return None
 
     def ensure_init(self, force: bool = False, timeout_seconds: float = None, strict: bool = False) -> None:
         """访问初始化页面获取会话基础 Cookie (若已存在有效 Cookie 则复用)"""
@@ -100,6 +177,10 @@ class Ticket12306Client:
 
     def query_tickets_strict(self, train_date: str, from_code: str, to_code: str,
                              purpose_codes: str = 'ADULT', timeout_seconds: float = None) -> List[TrainTicketInfo]:
+        cache_key = [train_date, from_code, to_code, purpose_codes]
+        cached = self._cached_models('tickets', cache_key, TrainTicketInfo)
+        if cached is not None:
+            return cached
         deadline = time.monotonic() + (timeout_seconds or settings.REQUEST_TIMEOUT)
         diagnostics = RailwayDiagnostics(logger, 'tickets', date=train_date, from_station=from_code, to_station=to_code)
         diagnostics.begin('tickets_session_init', settings.INIT_URL)
@@ -118,6 +199,7 @@ class Ticket12306Client:
         }
 
         try:
+            self._pace_live_request()
             self.ensure_init(timeout_seconds=remaining(), strict=True)
             target_url = f"{settings.BASE_12306_URL}/{self._cached_c_url}"
             diagnostics.begin('tickets_request', target_url)
@@ -177,6 +259,10 @@ class Ticket12306Client:
             station_map = data.get("map", {})
 
             tickets = self._parse_ticket_results(raw_results, station_map)
+            if self.cache is not None:
+                self.cache.set('tickets', cache_key,
+                    [dict(ticket.model_dump(), run_date=ticket.run_date) for ticket in tickets],
+                    settings.TICKET_CACHE_SECONDS)
             if redirected:
                 diagnostics.stage = 'tickets_complete'
                 diagnostics.recovered()
@@ -376,6 +462,9 @@ class Ticket12306Client:
     def query_train_stops_strict(self, train_no: str, from_code: str, to_code: str,
                                  depart_date: str, timeout_seconds: float = None) -> List[TrainStopInfo]:
         cache_key = (train_no, depart_date, from_code, to_code)
+        cached = self._cached_models('stops', cache_key, TrainStopInfo)
+        if cached is not None:
+            return cached
         now = time.time()
         if cache_key in self._stops_cache:
             cache_time, cached_stops = self._stops_cache[cache_key]
@@ -399,6 +488,7 @@ class Ticket12306Client:
             "depart_date": depart_date
         }
         try:
+            self._pace_live_request()
             self.ensure_init(timeout_seconds=remaining(), strict=True)
             diagnostics.begin('stops_request', settings.STOPS_QUERY_URL)
             res = self.session.get(
@@ -426,6 +516,9 @@ class Ticket12306Client:
                 arrive_time=item.get('arrive_time', '--'), start_time=item.get('start_time', '--'),
                 stopover_time=item.get('stopover_time', '--')) for item in data]
             if stops:
+                if self.cache is not None:
+                    self.cache.set('stops', cache_key, [stop.model_dump() for stop in stops],
+                        settings.STOPS_CACHE_HOURS * 3600)
                 self._stops_cache[cache_key] = (now, stops)
                 if len(self._stops_cache) > 256:
                     del self._stops_cache[next(iter(self._stops_cache))]

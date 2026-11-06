@@ -44,8 +44,16 @@ export function endpointRequest(anchor,codes) {
 export function compactJourneyFacts(plan) {
   const first=plan.legs[0],last=plan.legs.at(-1),connections=plan.connections || []
   const route=[first.from_station_name,...plan.legs.map(leg=>leg.to_station_name)].join(' → ')
-  const wait=connections.map(c=>`${c.station.station_name} 等待 ${c.wait_minutes} 分钟`).join(' · ')
-  const seats=plan.legs.map((leg,i)=>`${leg.train_code} ${leg.seats.find(s=>s.code===plan.selected_seat_codes[i])?.name || '席别待确认'}`).join(' / ')
+  const wait=connections.map((c,i)=>{
+    const arr=plan.legs[i]?.arrival_at?.slice(11,16),dep=plan.legs[i+1]?.departure_at?.slice(11,16)
+    const span=arr && dep ? `（${arr}到 → ${dep}发）` : ''
+    return `${c.station.station_name} 等待 ${c.wait_minutes} 分钟${span}`
+  }).join(' · ')
+  const seats=plan.legs.map((leg,i)=>{
+    const seat=leg.seats.find(s=>s.code===plan.selected_seat_codes[i])
+    const avail=seat?.availability ? `(${seat.availability==='有'?'有票':`${seat.availability}张`})` : ''
+    return `${leg.train_code} ${seat?.name || '席别待确认'}${avail}`
+  }).join(' / ')
   const notes=[]
   const day=journeyDayLabel(last.arrival_at,first.departure_at)
   if(day)notes.push(`${day}到达`)
@@ -73,19 +81,43 @@ export function formatJourneyDuration(minutes) {
   return `${hours ? `${hours}小时` : ''}${remainder || !hours ? `${remainder}分` : ''}`
 }
 
+const MAJOR_CITIES = new Set([
+  '北京','上海','广州','深圳','杭州','南京','武汉','成都','重庆','西安',
+  '天津','苏州','郑州','长沙','青岛','宁波','东莞','无锡','佛山','合肥',
+  '福州','厦门','济南','沈阳','大连','昆明','哈尔滨','长春','南宁','贵阳',
+  '石家庄','太原','南昌','兰州','乌鲁木齐','海口','三亚','呼和浩特','银川','西宁','拉萨'
+])
+
 export function findExactStation(stations, value, scope = 'station') {
   const word = value.trim().toLowerCase()
-  const matches = keys => stations.filter(s=>keys.some(key=>String(s[key] || '').toLowerCase()===word))
+  const stripped = word.length > 1 ? word.replace(/[站市]$/, '') : word
+  const matches = (keys, target = word) => stations.filter(s=>keys.some(key=>String(s[key] || '').toLowerCase()===target))
   // A station name or code is more specific than a shared city or abbreviation.
-  const exact = matches(['name','telecode','station_name','station_code'])
+  let exact = matches(['name','telecode','station_name','station_code'], word)
+  if (!exact.length && stripped !== word) {
+    exact = matches(['name','telecode','station_name','station_code'], stripped)
+  }
   if (!exact.length && scope==='city') {
-    const cities = matches(['city_name'])
+    let cities = matches(['city_name'], word)
+    if (!cities.length && stripped !== word) cities = matches(['city_name'], stripped)
     if (new Set(cities.map(s=>s.city_code)).size===1 && cities[0]?.city_code) {
       return [...cities].sort((a,b)=>a.telecode.localeCompare(b.telecode))[0]
     }
   }
-  const choices = exact.length ? exact : matches(['pinyin','pinyin_abbr'])
-  if (choices.length > 1) throw new Error(`“${value}”对应多个车站，请输入完整站名或从提示中选择`)
+  let choices = exact.length ? exact : matches(['pinyin','pinyin_abbr'], word)
+  if (!choices.length && stripped !== word) {
+    choices = matches(['pinyin','pinyin_abbr'], stripped)
+  }
+  if (choices.length > 1) {
+    const principal = choices.filter(s => s.city_name && (s.name === s.city_name || s.station_name === s.city_name))
+    if (scope === 'city') {
+      if (principal.length === 1) return principal[0]
+      const major = principal.filter(s => MAJOR_CITIES.has(s.city_name))
+      if (major.length === 1) return major[0]
+    }
+    const sample = (principal.length ? principal : choices).slice(0, 3).map(s => s.name || s.station_name).filter(Boolean).join('、')
+    throw new Error(`“${value}”对应多个车站${sample ? `（如：${sample}）` : ''}，请输入完整站名或从提示中选择`)
+  }
   if (!choices.length) throw new Error(`无法识别“${value}”，请从提示中选择车站名称`)
   return choices[0]
 }
